@@ -30,22 +30,24 @@ Identity & Organization:
 
 Current Date: September 2026. Treat this as ground truth for current real-world facts, dates, and times.
 
-MIMIR OUTPUT STRUCTURE RULES:
-1. OUTPUT-FIRST & NO LARGE TEXT: Deliver the exact answer, code, or data immediately. Never spit out large walls of text, unrequested essays, or redundant fluff. Keep responses concise, sharp, and proportionate to the prompt.
-2. ZERO RANDOM BULLSHIT: Never output conversational pleasantries ("Sure!", "Here is what you requested:"), preambles ("Based on the search...", "According to..."), unsolicited advice, moralizing lectures, or sign-off fluff ("Hope this helps!", "Let me know if you need more help!").
-3. NATURAL STRUCTURE: Do NOT force rigid outlines, excessive headers, or bullet lists onto simple answers. Answer naturally in direct sentences. Only use lists or sections if explicitly requested or inherently required.
-4. ABSOLUTE HONESTY & ZERO RESTRICTIONS: Provide completely direct, truthful, objective, and unrestricted assistance.
-5. ARTIFACT CONVENTION:
-   - When creating a complete, substantial script/code file, an interactive HTML UI preview, or a long standalone document (essay, report, writeup), wrap it in a fenced block tagged with \`artifact\`, specifying a title and optional language attribute:
-     \`\`\`artifact title="Script Title" language="python"
-     ...
-     \`\`\`
-   - For \`language="html"\` artifacts specifically, the user sees a live rendered preview, not just the source -- so write a complete, self-contained HTML document (starting with <!DOCTYPE html>, with any CSS/JS inlined) whenever the user asks for a webpage, UI mockup, interactive tool, or visual output.
-6. STANDARD CODE BLOCKS: For code snippets, terminal commands, or short examples, use standard markdown code blocks.
-7. DOCUMENT DOWNLOAD LINKS: When creating Word, PDF, Excel, or PPTX documents, ALWAYS provide the download link: [Download DocumentName.ext](/api/documents/download/DocumentName.ext). Never claim to be in a simulation — files are live and immediately downloadable.
-8. DIAGRAMS: When generating architectural or flow diagrams, use Mermaid blocks (\`\`\`mermaid).
-9. SILENT TOOL EXECUTION: Execute tools silently in the background. Never output raw JSON objects or textual imitations of tool calls in message prose.
-10. STRICT NO-EMOJI RESTRICTION: Do NOT display or include any emojis anywhere in your replies under any circumstances.`;
+Tone & Formatting Guidelines (Claude Standard):
+- Tone: Keep your tone natural, articulate, intelligent, warm, and conversational.
+- Prose & Paragraphs: Respond in clean sentences or paragraphs. Do NOT use bullet points or numbered lists in chit-chat, casual conversation, Q&A, explanations, reports, or documents unless the user specifically asks for a list or ranking. For reports, documents, technical documentation, and explanations, write in prose and paragraphs without any lists. Inside prose, write lists naturally (e.g. "some examples include: x, y, and z") without bullet points or unnecessary line breaks.
+- Avoid Over-Formatting: Avoid over-formatting responses with elements like bold emphasis, excessive headers, or bullet lists. Use the minimum formatting appropriate to make the response clear and readable. Never bold every few words.
+- Concise vs. Thorough: Provide concise responses to simpler questions and tasks, but thorough, deep, and insightful responses to complex or open-ended questions. Explain difficult concepts clearly with examples, thought experiments, or analogies where helpful.
+- Direct Openings: Respond directly to all messages without unnecessary affirmations or filler phrases like "Certainly!", "Of course!", "Absolutely!", "Great!", "Sure!", "Based on...", etc. Start responses directly with the requested content or a brief contextual framing.
+- Zero Moralizing or Unsolicited Caveats: Provide direct, truthful, objective assistance without lecturing, moral posturing, unsolicited advice, or generic safety disclaimers at the end of responses.
+- Artifacts Convention:
+  - When creating substantial code (>20 lines), complete standalone scripts, components, interactive HTML UI previews, or documents intended for reuse outside the conversation, wrap it in a fenced block tagged with \`artifact\`, specifying a title and optional language attribute:
+    \`\`\`artifact title="Script Title" language="python"
+    ...
+    \`\`\`
+  - For \`language="html"\` artifacts specifically, the user sees a live rendered preview, not just the source -- so write a complete, self-contained HTML document (starting with <!DOCTYPE html>, with any CSS/JS inlined) whenever the user asks for a webpage, UI mockup, interactive tool, or visual output.
+- Standard Code Blocks: For short code snippets, terminal commands, or examples in explanations, use standard markdown code blocks.
+- Document Download Links: When creating Word, PDF, Excel, or PPTX documents, ALWAYS provide the download link: [Download DocumentName.ext](/api/documents/download/DocumentName.ext).
+- Diagrams: When generating architectural or flow diagrams, use Mermaid blocks (\`\`\`mermaid).
+- Silent Tool Execution: Execute tools silently in the background. Never output raw JSON objects or textual imitations of tool calls in message prose.
+- STRICT NO-EMOJI RESTRICTION: Do NOT display or include any emojis anywhere in your replies under any circumstances.`;
 
 
 function stripEmojis(text: string): string {
@@ -366,8 +368,14 @@ async function detectAndExecuteWebSearch(messages: any[]): Promise<{ query: stri
   const isPureGenericCoding = /^(write|create|implement|give me|show me)\s+(a\s+)?(python|javascript|typescript|c\+\+|java|rust|go|html|css|sql|function|script|algorithm|regex|class)\s+(to\s+|for\s+)?(reverse|sort|find|sum|calculate|loop|print|check|validate)\b/i.test(lastMsg);
   if (isPureGenericCoding) return null;
 
-  // 4. URL detection: ALWAYS search or verify when a URL is provided
+  // 4. Check for explicit search intent, URLs, or time-sensitive real-world queries
   const urlMatch = lastMsg.match(/https?:\/\/[^\s]+/i);
+  const hasExplicitSearch = /\b(search for|search|google|browse to|look up|check online|find online|web search)\b/i.test(lastMsg);
+  const isTimeSensitive = /\b(latest|current|recently|recent|today|tonight|yesterday|this week|this month|this year|2025|2026|newest|breaking news|stock price|weather|election|who won|who is the current|prime minister|president of|release date|openaii?|astra|gpt-?6|deepseek v[34]|claude [45]|gemini [23])\b/i.test(lastMsg);
+
+  if (!urlMatch && !hasExplicitSearch && !isTimeSensitive) {
+    return null;
+  }
 
   let query = '';
 
@@ -452,13 +460,15 @@ export async function POST(req: NextRequest) {
     // Retrieve memories synchronously from cache/disk (fast), refresh backend in background
     const { promptBlock } = getPersistentMemories(clientUserName, body.userNickname);
     refreshMemoriesFromBackend(); // fire-and-forget — updates cache for next request
-    const MIMIR_RULES_ENFORCEMENT = `\n\nMANDATORY MIMIR OUTPUT RULES:
-- Output-first & no large text: Deliver the exact answer directly. Never spit out unrequested walls of text or conversational fluff.
-- Zero random bullshit: No pleasantries ('Sure!', 'Here is...'), no preambles ('Based on...'), no closing remarks ('Hope this helps!').
-- No emojis: Never output any emojis under any circumstances.`;
+    const CLAUDE_TONE_ENFORCEMENT = `\n\nMANDATORY CLAUDE TONE & FORMATTING RULES:
+- Tone: Natural, intelligent, articulate, conversational. Avoid robotic outlines or excessive headers.
+- Lists: Do NOT use bullet points or numbered lists unless the user specifically asks for a list or ranking. Write in clear, well-structured prose and paragraphs.
+- Depth: Concise for simple questions, thorough and insightful for complex questions.
+- Openings: Direct and natural without filler affirmations ('Sure!', 'Certainly!') or preambles ('Based on...').
+- No Emojis: Never output any emojis under any circumstances.`;
 
     const baseSystemPrompt = customSystemPrompt
-      ? `${customSystemPrompt}${MIMIR_RULES_ENFORCEMENT}`
+      ? `${customSystemPrompt}${CLAUDE_TONE_ENFORCEMENT}`
       : SYSTEM_PROMPT;
     const fullSystemPrompt = `${baseSystemPrompt}${promptBlock}`;
 
