@@ -816,8 +816,9 @@ export const PromptInput = React.forwardRef<HTMLDivElement, PromptInputProps>(
                 transition: isSmoothResize
                   ? "transform 0.15s ease-out, opacity 0.15s ease-out"
                   : "transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 0.3s ease-out",
+                backgroundColor: "var(--card)",
               }}
-              className="border border-border/80 border-b-0 bg-card/90 rounded-t-2xl px-2 pt-2 pb-1 flex items-start gap-2 overflow-x-auto prompt-scrollbar"
+              className="border border-border/80 border-b-0 bg-card rounded-t-2xl px-2 pt-2 pb-1 flex items-start gap-2 overflow-x-auto prompt-scrollbar"
             >
               {attachments.map((attachment, index) => (
                 <AttachmentThumb
@@ -846,9 +847,10 @@ export const PromptInput = React.forwardRef<HTMLDivElement, PromptInputProps>(
               height: expanded ? containerHeight : 50,
               transition: isSmoothResize ? SMOOTH_HEIGHT_TRANSITION : SPRING_TRANSITION,
               overflow: expanded ? "visible" : "hidden",
+              backgroundColor: "var(--card)",
             }}
             className={cn(
-              "relative w-full border border-border/80 bg-card/95 backdrop-blur-md shadow-premium-sm transition-colors duration-300",
+              "relative w-full border border-border/80 bg-card shadow-premium-sm transition-colors duration-300",
               "hover:border-primary/40 focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20 focus-within:shadow-gold-sm z-10",
               expanded ? "cursor-text" : "cursor-default"
             )}
@@ -947,14 +949,14 @@ export const PromptInput = React.forwardRef<HTMLDivElement, PromptInputProps>(
                 </button>
 
                 <div
-                  style={{ transformOrigin: "bottom left" }}
+                  style={{ transformOrigin: "bottom left", backgroundColor: "var(--card)" }}
                   onMouseLeave={() => {
                     setHoverStyle((prev) => ({
                       ...prev, opacity: 0, transform: prev.transform.replace("scale(1)", "scale(0.95)"), transition: "opacity 0.2s ease-in, transform 0.2s ease-out",
                     }));
                   }}
                   className={cn(
-                    "absolute bottom-full left-0 mb-2.5 z-50 min-w-48 max-w-64 rounded-2xl border border-border bg-card/98 p-1.5 shadow-premium-lg backdrop-blur-md flex flex-col gap-0.5 transition-all duration-400 cursor-default",
+                    "absolute bottom-full left-0 mb-2.5 z-50 min-w-48 max-w-64 rounded-2xl border border-border bg-card p-1.5 shadow-premium-lg flex flex-col gap-0.5 transition-all duration-400 cursor-default",
                     isModelSelectOpen
                       ? "opacity-100 scale-100 translate-y-0 pointer-events-auto ease-[cubic-bezier(0.34,1.56,0.64,1)]"
                       : "opacity-0 scale-95 translate-y-3 pointer-events-none ease-[cubic-bezier(0.175,0.885,0.32,1.275)]"
