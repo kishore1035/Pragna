@@ -1,10 +1,11 @@
 'use client';
 
-import React, { useState } from 'react';
-import { Copy, ThumbsUp, ThumbsDown, RotateCcw, Check } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Copy, ThumbsUp, ThumbsDown, RotateCcw, Check, Volume2, VolumeX } from 'lucide-react';
 import { Message } from '../types/chat';
 import MarkdownRenderer from './MarkdownRenderer';
 import AppLogo from '@/components/ui/AppLogo';
+import { detectIndianLanguage, cleanTextForSpeech } from '@/lib/indianLanguages';
 
 interface MessageBubbleProps {
   message: Message;
@@ -56,6 +57,7 @@ export default function MessageBubble({
 }: MessageBubbleProps) {
   const [copied, setCopied] = useState(false);
   const [thumbState, setThumbState] = useState<'up' | 'down' | null>(null);
+  const [isSpeaking, setIsSpeaking] = useState(false);
   const isThinking = message.role === 'assistant' && message.content === '' && message.isStreaming;
 
   const exactTimestamp = formatExactTimestamp(message.timestamp);
@@ -66,6 +68,82 @@ export default function MessageBubble({
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
+
+  const stopSpeaking = useCallback(() => {
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+    }
+    setIsSpeaking(false);
+  }, []);
+
+  const toggleSpeech = useCallback(() => {
+    if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
+
+    // Second click stops talking
+    if (isSpeaking) {
+      stopSpeaking();
+      return;
+    }
+
+    // First click: stop any currently playing speech and talk this message
+    window.speechSynthesis.cancel();
+    window.dispatchEvent(new CustomEvent('pragna:speech-started', { detail: { id: message.id } }));
+
+    const cleanText = cleanTextForSpeech(message.content);
+    if (!cleanText) return;
+
+    const detected = detectIndianLanguage(cleanText);
+    const utterance = new SpeechSynthesisUtterance(cleanText);
+
+    utterance.lang = detected?.bcp47 || 'en-IN';
+    utterance.rate = 1.0;
+    utterance.pitch = 1.05;
+
+    const voices = window.speechSynthesis.getVoices();
+    if (voices && voices.length > 0) {
+      const exact = voices.find(v => v.lang.toLowerCase().startsWith(utterance.lang.toLowerCase()));
+      const langPrefix = voices.find(v => detected && v.lang.toLowerCase().startsWith(detected.id.toLowerCase()));
+      const indianVoice = voices.find(v => v.lang.toLowerCase().includes('-in'));
+      const femaleVoice = voices.find(v => /female|zira|samantha|prerna|aditi|swara|shruti|kavya|lekha/i.test(v.name));
+
+      utterance.voice = exact || langPrefix || indianVoice || femaleVoice || voices[0];
+    }
+
+    utterance.onend = () => {
+      setIsSpeaking(false);
+    };
+
+    utterance.onerror = () => {
+      setIsSpeaking(false);
+    };
+
+    setIsSpeaking(true);
+    window.speechSynthesis.speak(utterance);
+  }, [isSpeaking, message.content, message.id, stopSpeaking]);
+
+  // Synchronize speech state when another message bubble starts speaking
+  useEffect(() => {
+    const handleOtherSpeech = (e: Event) => {
+      const customEvent = e as CustomEvent<{ id: string }>;
+      if (customEvent.detail?.id !== message.id) {
+        setIsSpeaking(false);
+      }
+    };
+
+    window.addEventListener('pragna:speech-started', handleOtherSpeech);
+    return () => {
+      window.removeEventListener('pragna:speech-started', handleOtherSpeech);
+    };
+  }, [message.id]);
+
+  // Cleanup speech on unmount
+  useEffect(() => {
+    return () => {
+      if (isSpeaking && typeof window !== 'undefined' && 'speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+      }
+    };
+  }, [isSpeaking]);
 
   return (
     <>
@@ -139,6 +217,18 @@ export default function MessageBubble({
               {/* Action row — only show when message is complete */}
               {!message.isStreaming && !isThinking && message.content && (
                 <div className="flex items-center gap-0.5 mt-3 -ml-1">
+                  <ActionButton
+                    icon={
+                      isSpeaking ? (
+                        <VolumeX size={14} className="text-primary animate-pulse" />
+                      ) : (
+                        <Volume2 size={14} />
+                      )
+                    }
+                    label={isSpeaking ? 'Stop speaking' : 'Read aloud'}
+                    onClick={toggleSpeech}
+                    active={isSpeaking}
+                  />
                   <ActionButton
                     icon={copied ? <Check size={14} className="text-green-500" /> : <Copy size={14} />}
                     label={copied ? 'Copied!' : 'Copy response'}

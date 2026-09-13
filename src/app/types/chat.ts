@@ -13,6 +13,7 @@ export interface Conversation {
   model: string;
   createdAt: string;
   updatedAt: string;
+  language?: string;
 }
 
 export interface ConversationGroup {

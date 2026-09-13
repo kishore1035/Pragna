@@ -34,11 +34,11 @@ export default function VoicePoweredOrbPage() {
         <div className="flex flex-col items-center space-y-2 text-center">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-400/10 border border-amber-400/20 text-amber-300 text-xs font-medium">
             <Radio className={`w-3.5 h-3.5 ${isRecording ? "animate-pulse text-emerald-400" : "text-amber-400"}`} />
-            <span>{isRecording ? (voiceDetected ? "Audio Detected • Pulsing" : "Listening...") : "Voice Assistant Standby"}</span>
+            <span>{isRecording ? (voiceDetected ? "Audio Detected • Pulsing" : "Listening...") : "Pragna Voice Standby"}</span>
           </div>
-          <h1 className="text-2xl font-bold tracking-tight text-white/90">Voice-Powered Neural Orb</h1>
+          <h1 className="text-2xl font-bold tracking-tight text-white/90">Pragna • Emotional Voice Studio</h1>
           <p className="text-sm text-neutral-400">
-            Real-time WebGL shader reactivity powered by Web Audio API RMS analysis
+            Real-time voice reactivity and empathetic neural audio companion
           </p>
         </div>
 

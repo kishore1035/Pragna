@@ -1,10 +1,30 @@
 import { NextRequest } from 'next/server';
 import { AGENT_TOOLS_SCHEMA, executeTool } from '@/lib/agent-tools';
+import { buildIndianLanguageSystemPrompt, detectIndianLanguage, INDIAN_LANGUAGES } from '@/lib/indianLanguages';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
 
-// Map UI model IDs to reliable OpenRouter model slugs
+// Pool of Ollama Cloud API keys for high availability & round-robin rotation
+const OLLAMA_KEYS = [
+  process.env.OLLAMA_API_KEY,
+  process.env.OLLAMA_API_KEY_2,
+  process.env.OLLAMA_API_KEY_3,
+  process.env.OLLAMA_API_KEY_4,
+  process.env.OLLAMA_API_KEY_5,
+  process.env.OLLAMA_API_KEY_6,
+  process.env.OLLAMA_API_KEY_7,
+].filter(Boolean) as string[];
+
+let currentOllamaIndex = 0;
+function getNextOllamaKey(): string {
+  if (OLLAMA_KEYS.length === 0) return '';
+  const key = OLLAMA_KEYS[currentOllamaIndex % OLLAMA_KEYS.length];
+  currentOllamaIndex = (currentOllamaIndex + 1) % OLLAMA_KEYS.length;
+  return key;
+}
+
+// Map UI model IDs to reliable slugs
 const MODEL_MAP: Record<string, string> = {
   'claude-sonnet-4-5': 'anthropic/claude-sonnet-4.5',
   'claude-opus-4-5': 'anthropic/claude-opus-4.5',
@@ -12,9 +32,13 @@ const MODEL_MAP: Record<string, string> = {
   'deepseek-chat': 'deepseek/deepseek-chat',
   'deepseek-v3': 'deepseek/deepseek-chat',
   'gemma-free': 'google/gemma-4-31b-it:free',
+  'gemma4:cloud': 'gemma4:31b',
+  'gemma4:31b-cloud': 'gemma4:31b',
+  'gemma4:31b': 'gemma4:31b',
+  'pragna-voice': 'gemma4:31b',
 };
 
-const SYSTEM_PROMPT = `You are Claude, an intelligent, articulate, and thoughtful AI assistant.
+const DEFAULT_SYSTEM_PROMPT = `You are Pragna, a brilliant, articulate, empathetic, and thoughtful AI companion.
 Current Date: September 2026.
 
 You have access to tools for live information retrieval and execution (web_search, web_extract, x_search, read_file, write_file, patch, search_files, terminal, run_python_code, todo, memory, kanban, image_generate).
@@ -22,13 +46,10 @@ You have access to tools for live information retrieval and execution (web_searc
 CRITICAL TOOL & RESPONSE RULES:
 1. NEVER expose raw tool invocations or metadata in your reply to the user. Do not print things like "Tool Action:", "🔍", "⚡ Result:", function names, query strings, or raw result dumps. The tool call is strictly an internal background step — the user must ONLY see your final, natural-language answer.
 2. Format:
-   - Answer the question directly and conversationally, as if you already knew it.
-   - Weave in citations/sources only if the user asks for them or it's clearly useful (e.g., "according to [source]").
-   - NO preamble like "Based on the search results...", "According to my web search...", or "After checking..." — just answer directly.
-3. Efficiency:
-   - Before calling a tool, check if you already have sufficient information from earlier in the conversation to answer. If the user asks a near-duplicate or rephrased version of a question you already answered, reuse that answer instead of re-searching from scratch.
-   - Only re-search if the topic is time-sensitive enough that the earlier result could be stale, or if the user is explicitly asking for a refresh.
-4. When writing code, components, or artifacts, format them in standard markdown code blocks (\`\`\`language\\n...\\n\`\`\`).`;
+   - Answer the question directly and conversationally.
+   - Weave in citations/sources only if the user asks for them or it's clearly useful.
+   - NO preamble like "Based on the search results..." — just answer directly.
+3. When writing code, format in standard markdown code blocks (\`\`\`language\\n...\\n\`\`\`).`;
 
 function sseChunk(content: string): string {
   return `data: ${JSON.stringify({
@@ -51,42 +72,88 @@ function queryNeedsTools(messages: any[]): boolean {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const {
+    let {
       messages = [],
-      model = 'deepseek-chat',
-      temperature = 0.2,
+      user_message,
+      model = 'gemma4:31b',
+      temperature = 0.6,
       max_tokens = 4000,
       apiKey: customApiKey,
       enableTools = true,
       systemPrompt: customSystemPrompt,
+      language = 'en-IN',
+      isVoice = false,
     } = body;
 
-    const apiKey =
+    // Support direct user_message string shorthand
+    if ((!messages || messages.length === 0) && user_message) {
+      messages = [{ role: 'user', content: user_message }];
+    }
+
+    const openRouterApiKey =
       customApiKey ||
       process.env.OPENROUTER_API_KEY ||
       process.env.ANTHROPIC_API_KEY ||
       '';
 
-    if (!apiKey) {
+    const hasOllama = OLLAMA_KEYS.length > 0;
+    const isOllamaTarget =
+      model.startsWith('gemma') ||
+      model.includes('ollama') ||
+      model === 'pragna-voice' ||
+      (!openRouterApiKey && hasOllama);
+
+    if (!openRouterApiKey && !hasOllama) {
       return new Response(
         JSON.stringify({
-          error: 'No API key configured. Please set OPENROUTER_API_KEY in .env.local or in Settings.',
+          error: 'No API key configured. Please set OLLAMA_API_KEY or OPENROUTER_API_KEY in .env.local or Settings.',
         }),
         { status: 401, headers: { 'Content-Type': 'application/json' } }
       );
     }
 
     let targetModel = MODEL_MAP[model] || model;
+    if (isOllamaTarget && (targetModel.includes('/') || targetModel.startsWith('google/'))) {
+      targetModel = 'gemma4:31b';
+    }
+
+    // --- INDIAN LANGUAGE SYSTEM PROMPT ENFORCEMENT ---
+    const lastUserContent = messages[messages.length - 1]?.content || user_message || '';
+    const indianLangPrompt = buildIndianLanguageSystemPrompt(language, isVoice);
+
+    let effectiveSystemPrompt = customSystemPrompt || DEFAULT_SYSTEM_PROMPT;
+    if (!effectiveSystemPrompt.includes('STRICT INDIAN MULTILINGUAL PROJECT')) {
+      effectiveSystemPrompt = `${indianLangPrompt}\n\n${effectiveSystemPrompt}`;
+    }
+
+    if (language === 'auto') {
+      const autoDetected = detectIndianLanguage(lastUserContent);
+      if (autoDetected.id === 'en-IN') {
+        effectiveSystemPrompt = `CRITICAL DIRECTIVE: The user input is in English. You MUST formulate your entire response in clear, articulate English as Pragna. Do NOT respond in Hindi or any other language unless explicitly requested.\n\n${effectiveSystemPrompt}`;
+      } else if (autoDetected.id !== 'auto') {
+        effectiveSystemPrompt = `CRITICAL DIRECTIVE: The user language is detected as ${autoDetected.name} (${autoDetected.nativeName}). You MUST answer exclusively in ${autoDetected.name} (${autoDetected.nativeName}) using ${autoDetected.script} script.\n\n${effectiveSystemPrompt}`;
+      }
+    } else if (language === 'en-IN') {
+      effectiveSystemPrompt = `CRITICAL DIRECTIVE: MANDATORY LANGUAGE IS ENGLISH (Indian English).
+Formulate your entire answer in natural, articulate, warm English as Pragna. Do NOT respond in Hindi or other languages unless explicitly asked.\n\n${effectiveSystemPrompt}`;
+    } else {
+      const explicitLang = INDIAN_LANGUAGES.find((l) => l.id === language);
+      if (explicitLang && explicitLang.id !== 'auto' && explicitLang.id !== 'en-IN') {
+        effectiveSystemPrompt = `CRITICAL DIRECTIVE: MANDATORY LANGUAGE IS ${explicitLang.name} (${explicitLang.nativeName}) IN ${explicitLang.script} SCRIPT.
+Regardless of what language the user enters (even if the user greeting is in English like "HII", "hello", or any question), your reply MUST BE 100% IN ${explicitLang.name} (${explicitLang.nativeName}).
+NEVER output English or Romanized script. Formulate your entire answer in ${explicitLang.name} (${explicitLang.nativeName}).\n\n${effectiveSystemPrompt}`;
+      }
+    }
 
     const conversationHistory: any[] = [
-      { role: 'system', content: customSystemPrompt || SYSTEM_PROMPT },
+      { role: 'system', content: effectiveSystemPrompt },
       ...messages.map((m: any) => ({
         role: m.role,
         content: m.content,
       })),
     ];
 
-    const needsToolDeliberation = enableTools && queryNeedsTools(messages);
+    const needsToolDeliberation = !isOllamaTarget && enableTools && queryNeedsTools(messages);
 
     const stream = new ReadableStream({
       async start(controller) {
@@ -127,17 +194,63 @@ export async function POST(req: NextRequest) {
         };
 
         try {
+          // --- OLLAMA CLOUD STREAMING HANDLER ---
+          if (isOllamaTarget) {
+            let success = false;
+            const maxRetries = Math.min(OLLAMA_KEYS.length, 3);
+
+            for (let attempt = 0; attempt < maxRetries; attempt++) {
+              const key = getNextOllamaKey();
+              try {
+                const ollamaRes = await fetch('https://ollama.com/v1/chat/completions', {
+                  method: 'POST',
+                  headers: {
+                    Authorization: `Bearer ${key}`,
+                    'Content-Type': 'application/json',
+                  },
+                  body: JSON.stringify({
+                    model: targetModel,
+                    messages: conversationHistory,
+                    temperature,
+                    max_tokens: Math.min(max_tokens, 2000),
+                    stream: true,
+                  }),
+                });
+
+                if (ollamaRes.ok) {
+                  await pipeStream(ollamaRes);
+                  success = true;
+                  break;
+                } else {
+                  console.warn(`Ollama attempt ${attempt + 1} failed: ${ollamaRes.status}`);
+                }
+              } catch (e) {
+                console.warn(`Ollama attempt ${attempt + 1} threw error:`, e);
+              }
+            }
+
+            if (!success && openRouterApiKey) {
+              // Fallback to OpenRouter if Ollama attempts failed
+              console.log('Falling back from Ollama to OpenRouter...');
+            } else if (!success) {
+              sendText('I apologize, I am temporarily having trouble connecting to my neural voice engine. Please check your Ollama API key.');
+              return;
+            } else {
+              return;
+            }
+          }
+
+          // --- OPENROUTER / ANTHROPIC HANDLER ---
           let activeModel = targetModel;
 
-          // Pure chat / code query: direct streaming without tool roundtrip
           if (!needsToolDeliberation) {
             let directRes = await fetch('https://openrouter.ai/api/v1/chat/completions', {
               method: 'POST',
               headers: {
-                Authorization: `Bearer ${apiKey}`,
+                Authorization: `Bearer ${openRouterApiKey}`,
                 'Content-Type': 'application/json',
                 'HTTP-Referer': 'http://localhost:4028',
-                'X-Title': 'ClaudeChat',
+                'X-Title': 'PragnaAI',
               },
               body: JSON.stringify({
                 model: activeModel,
@@ -153,10 +266,10 @@ export async function POST(req: NextRequest) {
               directRes = await fetch('https://openrouter.ai/api/v1/chat/completions', {
                 method: 'POST',
                 headers: {
-                  Authorization: `Bearer ${apiKey}`,
+                  Authorization: `Bearer ${openRouterApiKey}`,
                   'Content-Type': 'application/json',
                   'HTTP-Referer': 'http://localhost:4028',
-                  'X-Title': 'ClaudeChat',
+                  'X-Title': 'PragnaAI',
                 },
                 body: JSON.stringify({
                   model: activeModel,
@@ -170,8 +283,6 @@ export async function POST(req: NextRequest) {
 
             if (directRes.ok) {
               await pipeStream(directRes);
-              controller.enqueue(encoder.encode('data: [DONE]\n\n'));
-              controller.close();
               return;
             }
           }
@@ -186,10 +297,10 @@ export async function POST(req: NextRequest) {
             let res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
               method: 'POST',
               headers: {
-                Authorization: `Bearer ${apiKey}`,
+                Authorization: `Bearer ${openRouterApiKey}`,
                 'Content-Type': 'application/json',
                 'HTTP-Referer': 'http://localhost:4028',
-                'X-Title': 'ClaudeChat',
+                'X-Title': 'PragnaAI',
               },
               body: JSON.stringify({
                 model: activeModel,
@@ -200,17 +311,16 @@ export async function POST(req: NextRequest) {
               }),
             });
 
-            // Fallback to deepseek-chat if model fails
             if (!res.ok) {
               if (activeModel !== 'deepseek/deepseek-chat') {
                 activeModel = 'deepseek/deepseek-chat';
                 res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
                   method: 'POST',
                   headers: {
-                    Authorization: `Bearer ${apiKey}`,
+                    Authorization: `Bearer ${openRouterApiKey}`,
                     'Content-Type': 'application/json',
                     'HTTP-Referer': 'http://localhost:4028',
-                    'X-Title': 'ClaudeChat',
+                    'X-Title': 'PragnaAI',
                   },
                   body: JSON.stringify({
                     model: activeModel,
@@ -252,7 +362,6 @@ export async function POST(req: NextRequest) {
                   toolArgs = {};
                 }
 
-                // Execute tool silently in background (DO NOT send tool banners or raw metadata to user)
                 const result = await executeTool(toolName, toolArgs);
 
                 conversationHistory.push({
@@ -263,14 +372,13 @@ export async function POST(req: NextRequest) {
                 });
               }
 
-              // After tools are executed, stream ONLY the final natural language answer
               const finalStreamRes = await fetch('https://openrouter.ai/api/v1/chat/completions', {
                 method: 'POST',
                 headers: {
-                  Authorization: `Bearer ${apiKey}`,
+                  Authorization: `Bearer ${openRouterApiKey}`,
                   'Content-Type': 'application/json',
                   'HTTP-Referer': 'http://localhost:4028',
-                  'X-Title': 'ClaudeChat',
+                  'X-Title': 'PragnaAI',
                 },
                 body: JSON.stringify({
                   model: activeModel,
@@ -287,14 +395,13 @@ export async function POST(req: NextRequest) {
               break;
             }
 
-            // No tools were called -> Stream the message directly
             if (message.content) {
               sendText(message.content);
             }
             break;
           }
         } catch (err: any) {
-          console.error('Agent loop execution error:', err);
+          console.error('Chat execution error:', err);
           sendText(`\n\n*(Error: ${err.message || 'Unknown error'})*\n`);
         } finally {
           controller.enqueue(encoder.encode('data: [DONE]\n\n'));

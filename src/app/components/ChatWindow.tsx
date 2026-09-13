@@ -8,6 +8,8 @@ import ChatInput from './ChatInput';
 import PromptInput from '@/components/ui/ai-chat-input';
 import EmptyState from './EmptyState';
 import AppLogo from '@/components/ui/AppLogo';
+import IndianLanguageSelector from '@/components/ui/IndianLanguageSelector';
+import { IndianLanguage, DEFAULT_INDIAN_LANGUAGE } from '@/lib/indianLanguages';
 
 interface ChatWindowProps {
   conversation: Conversation | null;
@@ -26,6 +28,8 @@ interface ChatWindowProps {
   onOpenCommandPalette?: () => void;
   onOpenVoiceAssistant?: () => void;
   onOpenTools?: () => void;
+  selectedLanguage?: IndianLanguage;
+  onSelectLanguage?: (lang: IndianLanguage) => void;
 }
 
 export default function ChatWindow({
@@ -45,6 +49,8 @@ export default function ChatWindow({
   onOpenCommandPalette,
   onOpenVoiceAssistant,
   onOpenTools,
+  selectedLanguage = DEFAULT_INDIAN_LANGUAGE,
+  onSelectLanguage,
 }: ChatWindowProps) {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [showJumpToBottom, setShowJumpToBottom] = useState(false);
@@ -59,34 +65,31 @@ export default function ChatWindow({
   const handleScroll = useCallback(() => {
     const el = scrollContainerRef.current;
     if (!el) return;
-    const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    const { scrollTop, scrollHeight, clientHeight } = el;
+    const distFromBottom = scrollHeight - scrollTop - clientHeight;
     const atBottom = distFromBottom < 80;
     isAtBottomRef.current = atBottom;
-    setShowJumpToBottom(!atBottom && (conversation?.messages.length ?? 0) > 0);
-  }, [conversation?.messages.length]);
+    setShowJumpToBottom(!atBottom && distFromBottom > 200);
+  }, []);
 
+  // Auto-scroll when new content arrives if already near bottom
   useEffect(() => {
-    if (isStreaming && isAtBottomRef.current) {
+    if (isAtBottomRef.current) {
       scrollToBottom(false);
     }
-  });
-
-  useEffect(() => {
-    setTimeout(() => scrollToBottom(false), 50);
-    setShowJumpToBottom(false);
-  }, [conversation?.id, scrollToBottom]);
+  }, [conversation?.messages, isStreaming, scrollToBottom]);
 
   const hasMessages = (conversation?.messages.length ?? 0) > 0;
 
   return (
-    <div className="flex flex-col flex-1 min-w-0 h-full relative bg-background">
-      {/* Top bar */}
-      <header className="flex items-center justify-between px-4 h-12 flex-shrink-0 border-b border-border/40 bg-background/80 backdrop-blur-sm">
-        <div className="flex items-center gap-2.5 min-w-0">
+    <div className="flex-1 flex flex-col h-full overflow-hidden bg-background relative">
+      {/* Top Header Bar */}
+      <div className="h-12 flex-shrink-0 flex items-center justify-between px-4 border-b border-border/40 bg-background/95 backdrop-blur-md z-10">
+        <div className="flex items-center gap-2 min-w-0">
           {!sidebarOpen && (
             <button
               onClick={onToggleSidebar}
-              className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors duration-150 flex-shrink-0"
+              className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors mr-1"
               aria-label="Open sidebar"
             >
               <PanelLeftOpen size={16} />
@@ -95,7 +98,7 @@ export default function ChatWindow({
 
           {hasMessages && conversation ? (
             <div className="flex items-center gap-1 min-w-0">
-              <span className="text-sm font-medium text-foreground truncate max-w-[280px] lg:max-w-[400px]">
+              <span className="text-sm font-medium text-foreground truncate max-w-[240px] lg:max-w-[360px]">
                 {conversation.title}
               </span>
               <ChevronDown size={13} className="text-muted-foreground flex-shrink-0" />
@@ -110,6 +113,17 @@ export default function ChatWindow({
         </div>
 
         <div className="flex items-center gap-1.5 flex-shrink-0">
+          {/* Indian Language Selector */}
+          {onSelectLanguage && (
+            <IndianLanguageSelector
+              selectedLanguage={selectedLanguage}
+              onSelectLanguage={onSelectLanguage}
+              variant="compact"
+              placement="bottom"
+              align="right"
+            />
+          )}
+
           {/* Command Palette */}
           {onOpenCommandPalette && (
             <button
@@ -126,8 +140,8 @@ export default function ChatWindow({
           {onOpenVoiceAssistant && (
             <button
               onClick={onOpenVoiceAssistant}
-              className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted border border-border/60 transition-all"
-              title="Voice Assistant"
+              className="p-1.5 rounded-lg text-amber-500/80 hover:text-amber-400 hover:bg-amber-500/10 border border-amber-500/20 transition-all"
+              title="Talk to Pragna (Voice Assistant)"
             >
               <Mic size={14} />
             </button>
@@ -148,34 +162,18 @@ export default function ChatWindow({
           {onToggleArtifact && (
             <button
               onClick={onToggleArtifact}
-              className={`p-1.5 rounded-lg border transition-all ${
+              className={`p-1.5 rounded-lg transition-all border ${
                 isArtifactOpen
-                  ? 'bg-primary/15 text-primary border-primary/30'
+                  ? 'text-primary bg-primary/10 border-primary/30'
                   : 'text-muted-foreground hover:text-foreground hover:bg-muted border-border/60'
               }`}
-              title="Toggle Artifacts Side Panel"
+              title="Toggle Artifact Panel"
             >
-              <LayoutGrid size={14} />
-            </button>
-          )}
-
-          {/* Plan badge */}
-          <div className="hidden sm:flex items-center gap-1.5 text-xs text-muted-foreground/70 ml-1">
-            <span className="px-2 py-0.5 rounded-full bg-muted text-muted-foreground text-[0.6875rem] font-medium tracking-wide">
-              Free
-            </span>
-          </div>
-
-          {hasMessages && (
-            <button className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium
-              text-muted-foreground hover:text-foreground hover:bg-muted border border-border/60
-              transition-all duration-150 active:scale-95">
-              <Share2 size={12} />
-              Share
+              <Code2 size={14} />
             </button>
           )}
         </div>
-      </header>
+      </div>
 
       {/* Chat area */}
       <div
@@ -197,6 +195,8 @@ export default function ChatWindow({
             onSelectModel={onSelectModel}
             onStopStreaming={onStopStreaming}
             isStreaming={isStreaming}
+            selectedLanguage={selectedLanguage}
+            onSelectLanguage={onSelectLanguage}
           />
         )}
       </div>
@@ -218,8 +218,25 @@ export default function ChatWindow({
 
       {/* Input area — only shown when conversation is active */}
       {hasMessages && (
-        <div className="flex-shrink-0 px-4 pb-4 pt-3 border-t border-border/30 bg-background/80 backdrop-blur-md">
+        <div className="flex-shrink-0 px-4 pb-4 pt-2 border-t border-border/30 bg-background/80 backdrop-blur-md">
           <div className="max-w-chat mx-auto flex flex-col items-center">
+            {/* Active Language Bar */}
+            {onSelectLanguage && (
+              <div className="w-full flex items-center justify-between px-2 mb-1.5 text-[11px] text-muted-foreground">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs">🇮🇳</span>
+                  <span>Responding in: <strong className="text-foreground">{selectedLanguage.name} ({selectedLanguage.nativeName})</strong></span>
+                </div>
+                <IndianLanguageSelector
+                  selectedLanguage={selectedLanguage}
+                  onSelectLanguage={onSelectLanguage}
+                  variant="compact"
+                  placement="top"
+                  align="right"
+                />
+              </div>
+            )}
+
             <PromptInput
               onSubmit={(msg, meta) => {
                 if (meta?.model && onSelectModel) {
@@ -228,7 +245,7 @@ export default function ChatWindow({
                 }
                 onSendMessage(msg);
               }}
-              placeholder="Reply to Pragna..."
+              placeholder={selectedLanguage.placeholder}
               initialModel={selectedModel?.label || "Tvarā"}
               models={models.map(m => m.label)}
               onModelChange={(modelLabel) => {
@@ -239,6 +256,7 @@ export default function ChatWindow({
               onStopStreaming={onStopStreaming}
               collapsedWidth={440}
               expandedWidth={720}
+              bcp47={selectedLanguage?.bcp47}
             />
             <p className="text-center text-[0.6875rem] text-muted-foreground/50 mt-2 tracking-wide">
               Pragna may make mistakes. Verify important information.

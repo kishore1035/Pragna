@@ -385,6 +385,7 @@ export interface PromptInputProps {
   expandedWidth?: number | string;
   isStreaming?: boolean;
   onStopStreaming?: () => void;
+  bcp47?: string;
 }
 
 export const PromptInput = React.forwardRef<HTMLDivElement, PromptInputProps>(
@@ -405,6 +406,7 @@ export const PromptInput = React.forwardRef<HTMLDivElement, PromptInputProps>(
       expandedWidth = 720,
       isStreaming = false,
       onStopStreaming,
+      bcp47,
     },
     ref
   ) => {
@@ -545,23 +547,6 @@ export const PromptInput = React.forwardRef<HTMLDivElement, PromptInputProps>(
 
       setIsRecording(true);
 
-      // Simulation function for tight sandbox environments
-      function simulateText() {
-        const fakeText = "Can you build a high fidelity Framer Motion layout animation for a dark mode dashboard?";
-        const words = fakeText.split(" ");
-        let i = 0;
-        let currentBase = valueRef.current;
-        demoTextIntervalRef.current = window.setInterval(() => {
-          if (i < words.length) {
-            currentBase = (currentBase ? currentBase + " " : "") + words[i];
-            handleValueChange(currentBase);
-            i++;
-          } else {
-            stopRecording();
-          }
-        }, 300);
-      }
-
       if (stream) {
         streamRef.current = stream;
         
@@ -593,12 +578,13 @@ export const PromptInput = React.forwardRef<HTMLDivElement, PromptInputProps>(
         };
         updateVisualizer();
 
-        // Setup Speech Recognition
+        // Setup Speech Recognition with Indian Language acoustic models
         const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
         if (SpeechRecognition) {
           const recognition = new SpeechRecognition();
           recognition.continuous = true;
           recognition.interimResults = true;
+          recognition.lang = bcp47 || 'hi-IN';
 
           let baseline = valueRef.current;
 
@@ -622,8 +608,10 @@ export const PromptInput = React.forwardRef<HTMLDivElement, PromptInputProps>(
           };
 
           recognition.onerror = (e: any) => {
-            console.error("Speech recognition error", e);
-            stopRecording();
+            console.warn("Speech recognition notice:", e.error);
+            if (e.error === 'not-allowed') {
+              stopRecording();
+            }
           };
 
           recognition.onend = () => {
@@ -633,17 +621,11 @@ export const PromptInput = React.forwardRef<HTMLDivElement, PromptInputProps>(
           recognitionRef.current = recognition;
           recognition.start();
         } else {
-          console.warn("Speech Recognition API not supported in this browser. Using simulated text.");
-          simulateText();
+          console.warn("Speech Recognition API not supported in this browser.");
+          stopRecording();
         }
-      } else {
-        // Fallback simulated visualizer
-        demoIntervalRef.current = window.setInterval(() => {
-          setAudioData(Array.from({ length: 5 }, () => Math.random() * 0.8 + 0.1));
-        }, 100);
-        simulateText();
       }
-    }, [handleValueChange, stopRecording]);
+    }, [handleValueChange, stopRecording, bcp47]);
 
     // Keep textarea auto-scrolled to bottom while recording
     useEffect(() => {

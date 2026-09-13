@@ -1,11 +1,12 @@
 'use client';
 
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import Sidebar from './Sidebar';
 import ChatWindow from './ChatWindow';
 import ArtifactPanel from './ArtifactPanel';
 import CommandPalette from './CommandPalette';
 import VoiceAssistantModal from './VoiceAssistantModal';
+import { INDIAN_LANGUAGES, IndianLanguage, DEFAULT_INDIAN_LANGUAGE } from '@/lib/indianLanguages';
 import ToolsPanel from './ToolsPanel';
 import { Conversation, Message, ModelOption } from '../types/chat';
 import { generateId, getConversationTitle, groupConversationsByDate } from '../utils/chatUtils';
@@ -20,6 +21,7 @@ export const MODELS: ModelOption[] = SANSKRIT_MODELS.map((m) => ({
 const STORAGE_KEY = 'claudechat_conversations';
 const ACTIVE_KEY = 'claudechat_active';
 const THEME_KEY = 'claudechat_theme';
+const LANGUAGE_STORAGE_KEY = 'pragna_selected_language';
 
 function loadConversations(): Conversation[] {
   if (typeof window === 'undefined') return [];
@@ -52,11 +54,27 @@ export default function ChatInterface() {
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [selectedModel, setSelectedModel] = useState<ModelOption>(MODELS[0]);
+  const [selectedLanguage, setSelectedLanguage] = useState<IndianLanguage>(DEFAULT_INDIAN_LANGUAGE);
+  const selectedLanguageRef = useRef<IndianLanguage>(DEFAULT_INDIAN_LANGUAGE);
+
+  // Keep ref synchronized with state
+  useEffect(() => {
+    selectedLanguageRef.current = selectedLanguage;
+  }, [selectedLanguage]);
+
+  const handleSelectLanguage = useCallback((lang: IndianLanguage) => {
+    setSelectedLanguage(lang);
+    selectedLanguageRef.current = lang;
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(LANGUAGE_STORAGE_KEY, lang.id);
+    }
+  }, []);
+
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
   const [isStreaming, setIsStreaming] = useState(false);
   const [mounted, setMounted] = useState(false);
 
-  // Mimir-integrated feature states
+  // Pragna-integrated feature states
   const [artifactOpen, setArtifactOpen] = useState(false);
   const [activeArtifact, setActiveArtifact] = useState<{ title: string; content: string; language?: string } | null>(null);
   const [cmdPaletteOpen, setCmdPaletteOpen] = useState(false);
@@ -85,6 +103,14 @@ export default function ChatInterface() {
     const savedConvs = loadConversations();
     const savedActive = localStorage.getItem(ACTIVE_KEY);
     const savedTheme = loadTheme();
+    const savedLangId = localStorage.getItem(LANGUAGE_STORAGE_KEY);
+    if (savedLangId) {
+      const found = INDIAN_LANGUAGES.find(l => l.id === savedLangId);
+      if (found) {
+        setSelectedLanguage(found);
+        selectedLanguageRef.current = found;
+      }
+    }
     setConversations(savedConvs);
     setActiveConversationId(savedActive);
     setTheme(savedTheme);
@@ -105,6 +131,7 @@ export default function ChatInterface() {
   const activeConversation = conversations.find(c => c.id === activeConversationId) ?? null;
 
   const createNewConversation = useCallback(() => {
+    const activeLang = selectedLanguageRef.current || selectedLanguage;
     const newConv: Conversation = {
       id: generateId('conv'),
       title: 'New conversation',
@@ -112,6 +139,7 @@ export default function ChatInterface() {
       model: selectedModel.id,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
+      language: activeLang.id,
     };
     setConversations(prev => {
       const updated = [newConv, ...prev];
@@ -120,12 +148,20 @@ export default function ChatInterface() {
     });
     setActiveConversationId(newConv.id);
     localStorage.setItem(ACTIVE_KEY, newConv.id);
-  }, [selectedModel.id]);
+  }, [selectedModel.id, selectedLanguage]);
 
   const selectConversation = useCallback((id: string) => {
     setActiveConversationId(id);
     localStorage.setItem(ACTIVE_KEY, id);
-  }, []);
+    const conv = conversations.find(c => c.id === id);
+    if (conv?.language) {
+      const foundLang = INDIAN_LANGUAGES.find(l => l.id === conv.language);
+      if (foundLang) {
+        setSelectedLanguage(foundLang);
+        selectedLanguageRef.current = foundLang;
+      }
+    }
+  }, [conversations]);
 
   const deleteConversation = useCallback((id: string) => {
     setConversations(prev => {
@@ -153,6 +189,7 @@ export default function ChatInterface() {
   const sendMessage = useCallback(async (content: string) => {
     if (!content.trim() || isStreaming) return;
 
+    const activeLang = selectedLanguageRef.current || selectedLanguage;
     let convId = activeConversationId;
     let isNewConv = false;
 
@@ -164,6 +201,7 @@ export default function ChatInterface() {
         model: selectedModel.id,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
+        language: activeLang.id,
       };
       convId = newConv.id;
       isNewConv = true;
@@ -193,6 +231,7 @@ export default function ChatInterface() {
           messages: msgs,
           title: isNewConv ? getConversationTitle(content) : c.title,
           updatedAt: new Date().toISOString(),
+          language: activeLang.id,
         };
       });
       saveConversations(updated);
@@ -220,19 +259,6 @@ export default function ChatInterface() {
       return updated;
     });
 
-    // BACKEND INTEGRATION: Replace this simulation with:
-    // const response = await fetch('/api/chat', {
-    //   method: 'POST',
-    //   headers: { 'Content-Type': 'application/json' },
-    //   body: JSON.stringify({ messages: [...existingMessages, userMessage], model: selectedModel.id }),
-    // });
-    // const reader = response.body?.getReader();
-    // const decoder = new TextDecoder();
-    // while (true) {
-    //   const { done, value } = await reader.read();
-    //   if (done) break;
-    //   const chunk = decoder.decode(value);
-    //   // parse SSE chunks and append tokens
     let streamedAny = false;
     try {
       const currentConv = conversations.find(c => c.id === convId);
@@ -248,6 +274,7 @@ export default function ChatInterface() {
           messages: history,
           model: selectedModel.id,
           apiKey: customKey || undefined,
+          language: activeLang.id,
         }),
       });
 
@@ -302,7 +329,7 @@ export default function ChatInterface() {
 
     // If no stream tokens received (e.g. offline or fallback needed)
     if (!streamedAny) {
-      await simulateStream(content, (token) => {
+      await simulateStream(content, activeLang, (token) => {
         setConversations(prev => {
           const updated = prev.map(c => {
             if (c.id !== convId) return c;
@@ -338,7 +365,7 @@ export default function ChatInterface() {
     });
 
     setIsStreaming(false);
-  }, [activeConversationId, isStreaming, selectedModel.id, conversations]);
+  }, [activeConversationId, isStreaming, selectedModel.id, conversations, selectedLanguage]);
 
   const stopStreaming = useCallback(() => {
     setIsStreaming(false);
@@ -408,6 +435,8 @@ export default function ChatInterface() {
           onOpenCommandPalette={() => setCmdPaletteOpen(true)}
           onOpenVoiceAssistant={() => setVoiceModalOpen(true)}
           onOpenTools={() => setToolsPanelOpen(true)}
+          selectedLanguage={selectedLanguage}
+          onSelectLanguage={handleSelectLanguage}
         />
         {/* Live Claude-style Artifact side panel */}
         <ArtifactPanel
@@ -429,6 +458,7 @@ export default function ChatInterface() {
       <VoiceAssistantModal
         isOpen={voiceModalOpen}
         onClose={() => setVoiceModalOpen(false)}
+        initialLanguage={selectedLanguage}
         onSendMessage={(text) => {
           setVoiceModalOpen(false);
           sendMessage(text);
@@ -448,20 +478,29 @@ export default function ChatInterface() {
 }
 
 // Simulated streaming responses with realistic AI-style content
-async function simulateStream(userInput: string, onToken: (token: string) => void): Promise<void> {
-  const responses = getMockResponse(userInput);
+async function simulateStream(
+  userInput: string,
+  lang: IndianLanguage,
+  onToken: (token: string) => void
+): Promise<void> {
+  const responses = getMockResponse(userInput, lang);
   const tokens = responses.split('');
   
   // Simulate thinking delay
-  await new Promise(r => setTimeout(r, 400 + Math.floor(tokens.length * 0.1)));
+  await new Promise(r => setTimeout(r, 300 + Math.floor(tokens.length * 0.05)));
 
   for (let i = 0; i < tokens.length; i++) {
-    await new Promise(r => setTimeout(r, 8 + (tokens[i] === ' ' ? 2 : 0)));
+    await new Promise(r => setTimeout(r, 6 + (tokens[i] === ' ' ? 2 : 0)));
     onToken(tokens[i]);
   }
 }
 
-function getMockResponse(input: string): string {
+function getMockResponse(input: string, lang?: IndianLanguage): string {
+  // If an Indian language is explicitly chosen (other than Indian English or auto), reply in that language
+  if (lang && lang.id !== 'auto' && lang.id !== 'en-IN') {
+    return `${lang.greeting}\n\nमैं प्रज्ञा हूँ, आपकी भारतीय AI साथी। मैं आपकी किस प्रकार सहायता कर सकती हूँ?`;
+  }
+
   const lower = input.toLowerCase();
 
   if (lower.includes('code') || lower.includes('function') || lower.includes('javascript') || lower.includes('python') || lower.includes('typescript')) {
