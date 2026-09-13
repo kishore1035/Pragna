@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+SOURCE="${BASH_SOURCE[0]}"
+while [ -h "$SOURCE" ]; do
+  DIR="$( cd -P "$( dirname "$SOURCE" )" >/dev/null 2>&1 && pwd )"
+  SOURCE="$(readlink "$SOURCE")"
+  [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE"
+done
+DIR="$( cd -P "$( dirname "$SOURCE" )" >/dev/null 2>&1 && pwd )"
+
+if [ -f "$DIR/backend/.venv/bin/python" ]; then
+    PYTHON="$DIR/backend/.venv/bin/python"
+elif [ -f "$DIR/backend/venv/bin/python" ]; then
+    PYTHON="$DIR/backend/venv/bin/python"
+else
+    PYTHON="python3"
+fi
+"$PYTHON" "$DIR/backend/argus_cli.py" "$@"

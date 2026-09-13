@@ -7,6 +7,7 @@ import ImageStudioPage from './pages/ImageStudioPage'
 import ComparePage from './pages/ComparePage'
 import StarredRequestsPage from './pages/StarredRequestsPage'
 import TasksPage from './pages/TasksPage'
+import ChatHistoryFoldersPage from './pages/ChatHistoryFoldersPage'
 import ChatWindow from '../components/chat/ChatWindow'
 import NewChatView from './components/NewChatView'
 
@@ -396,6 +397,17 @@ function App({ onLogout, userProfile }) {
 
     if (activeView === 'compare') {
       return <ComparePage />
+    }
+
+    if (activeView === 'chat-history-folders' || activeView === 'history') {
+      return (
+        <ChatHistoryFoldersPage
+          onSelectChat={(targetChatId) => {
+            setActiveChatId(targetChatId)
+            setActiveView('chats')
+          }}
+        />
+      )
     }
 
     if (activeView === 'agent') {

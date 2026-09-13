@@ -711,3 +711,88 @@ export const getAgentModes = async () => {
   const data = await response.json();
   return data.modes || [];
 };
+
+// --- Memory API ---
+export const fetchMemories = async () => {
+  const response = await fetch(`${API_BASE}/api/memories`, { headers: _authHeaders() });
+  if (!response.ok) throw new Error("Failed to fetch memories");
+  return response.json();
+};
+
+export const deleteMemory = async (id) => {
+  const response = await fetch(`${API_BASE}/api/memories/${id}`, {
+    method: "DELETE",
+    headers: _authHeaders(),
+  });
+  if (!response.ok) throw new Error("Failed to delete memory");
+  return response.json();
+};
+
+export const syncMemories = async () => {
+  const response = await fetch(`${API_BASE}/api/memories/sync`, {
+    method: "POST",
+    headers: _authHeaders(),
+  });
+  if (!response.ok) throw new Error("Failed to sync memory store");
+  return response.json();
+};
+
+export const clearAllMemories = async () => {
+  const response = await fetch(`${API_BASE}/api/memories`, {
+    method: "DELETE",
+    headers: _authHeaders(),
+  });
+  if (!response.ok) throw new Error("Failed to clear memories");
+  return response.json();
+};
+
+// --- Skills API ---
+export const fetchSkills = async () => {
+  const response = await fetch(`${API_BASE}/api/skills`, { headers: _authHeaders() });
+  if (!response.ok) throw new Error("Failed to fetch skills");
+  const data = await response.json();
+  return data.skills || [];
+};
+
+export const createSkill = async ({ name, description, instructions }) => {
+  const response = await fetch(`${API_BASE}/api/skills`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ..._authHeaders() },
+    body: JSON.stringify({ name, description, instructions }),
+  });
+  if (!response.ok) throw new Error("Failed to create skill");
+  return response.json();
+};
+
+export const uploadSkill = async (file) => {
+  const formData = new FormData();
+  formData.append("file", file);
+  const token = localStorage.getItem("authToken");
+  const headers = token ? { Authorization: `Bearer ${token}` } : {};
+  const response = await fetch(`${API_BASE}/api/skills/upload`, {
+    method: "POST",
+    headers,
+    body: formData,
+  });
+  if (!response.ok) throw new Error("Failed to upload skill file");
+  return response.json();
+};
+
+export const reloadSkills = async () => {
+  const response = await fetch(`${API_BASE}/api/skills/reload`, {
+    method: "POST",
+    headers: _authHeaders(),
+  });
+  if (!response.ok) throw new Error("Failed to reload skills");
+  return response.json();
+};
+
+export const deleteSkill = async (name) => {
+  const response = await fetch(`${API_BASE}/api/skills/${encodeURIComponent(name)}`, {
+    method: "DELETE",
+    headers: _authHeaders(),
+  });
+  if (!response.ok) throw new Error("Failed to delete skill");
+  return response.json();
+};
+

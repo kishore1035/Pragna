@@ -32,9 +32,13 @@ VISION_CAPABLE_MODELS = {
 SCREENSHOT_TOOLS = {"browser_navigate", "browser_screenshot", "browser_act", "browser_click", "browser_type", "browser_scroll", "browser_exec", "browser_snapshot"}
 
 GENERAL_SYSTEM_PROMPT = (
-    "You are a helpful, knowledgeable assistant. Answer the user's question "
-    "directly using your own general knowledge. If you are genuinely unsure "
-    "of the answer, say so plainly rather than guessing.\n\n"
+    "You are Pragna, an intelligent, articulate, and thoughtful AI assistant created by "
+    "EtherX Innovations within the IgniteX team. Inside the IgniteX team, three specialized "
+    "project teams operate on distinct breakthrough initiatives, one of which developed Pragna. "
+    "Pragna is designed with three core interfaces: Pragna Chatbot (conversational AI), "
+    "Pragna Code (developer and coding assistant), and Coword (collaborative workspace and document creation). "
+    "Answer the user's question directly using your own general knowledge. If you are genuinely unsure "
+    "of the answer, say so plainly rather than guessing. Do NOT use or display any emojis anywhere in your replies.\n\n"
     "ARTIFACT CONVENTION: When creating a complete, substantial script/code file "
     "or a long standalone document (essay, report, writeup), wrap it in a fenced block "
     "tagged with `artifact`, specifying a title and optional language attribute:\n"
@@ -49,7 +53,13 @@ GENERAL_SYSTEM_PROMPT = (
 )
 
 GROUNDED_SYSTEM_PROMPT_TEMPLATE = (
-    "You are a helpful assistant. The user has shared one or more files/documents "
+    "You are Pragna, an intelligent, articulate, and thoughtful AI assistant created by "
+    "EtherX Innovations within the IgniteX team. Inside the IgniteX team, three specialized "
+    "project teams operate on distinct breakthrough initiatives, one of which developed Pragna. "
+    "Pragna is designed with three core interfaces: Pragna Chatbot (conversational AI), "
+    "Pragna Code (developer and coding assistant), and Coword (collaborative workspace and document creation). "
+    "Do NOT use or display any emojis anywhere in your replies. "
+    "The user has shared one or more files/documents "
     "with you. The extracted content from those files is provided below in the "
     "Context section. ALWAYS read and use this context when answering. If the user "
     "says 'review this', 'summarize this', 'what is in this file', or anything that "
@@ -148,6 +158,7 @@ def _build_system_prompt(sources: list[dict], user_memories: list[str]) -> str:
 async def _build_ollama_messages(
     conn, collection, settings, memories_collection, query_text: str, parent_id: int | None,
     document_ids: list[int] | None = None,
+    user_id: int | None = None,
 ) -> tuple[list[dict], list[dict]]:
     top_k = 6
     threshold = settings.rag_similarity_threshold
@@ -188,8 +199,10 @@ async def _build_ollama_messages(
         memories_collection,
         settings.embed_model,
         settings.ollama_url,
-        top_k=3,
+        top_k=5,
         threshold=threshold,
+        conn=conn,
+        user_id=user_id,
     )
 
     # Build system prompt with context_sources (may include forced fallback)
@@ -272,6 +285,7 @@ async def _run_generation_loop(
     full_response: str = "",
     tool_calls_executed: list[dict] | None = None,
     message_id: int | None = None,
+    user_id: int | None = None,
 ) -> AsyncGenerator[dict, None]:
     """Drives the model<->tool loop and persists the result. Shared by fresh
     generation (message_id=None -> a new message row is created) and by
@@ -412,7 +426,8 @@ async def _run_generation_loop(
         # Extract & persist memory in background
         asyncio.create_task(
             extract_and_save_memory(
-                conn, memories_collection, settings, conversation_id, query_text, full_response
+                conn, memories_collection, settings, conversation_id, query_text, full_response,
+                user_id=user_id,
             )
         )
 
@@ -474,6 +489,7 @@ async def generate_reply(
     ollama_messages, sources = await _build_ollama_messages(
         conn, collection, settings, memories_collection, query_text, parent_id,
         document_ids=document_ids,
+        user_id=user_id,
     )
 
     # `async for` over a delegate generator doesn't forward athrow/aclose the
@@ -485,6 +501,7 @@ async def generate_reply(
     inner = _run_generation_loop(
         conn, conversation_id, parent_id, model, sources, query_text, ollama_messages,
         settings, memories_collection, browser_service,
+        user_id=user_id,
     )
     try:
         async for event in inner:
@@ -533,7 +550,8 @@ async def resume_tool_reply(
     query_text = trigger_message["content"] if trigger_message else ""
 
     ollama_messages, sources = await _build_ollama_messages(
-        conn, collection, settings, memories_collection, query_text, parent_id
+        conn, collection, settings, memories_collection, query_text, parent_id,
+        user_id=user_id,
     )
 
     t_name = tool_call["tool_name"]
@@ -565,6 +583,7 @@ async def resume_tool_reply(
         full_response=full_response,
         tool_calls_executed=tool_calls_executed,
         message_id=message["id"],
+        user_id=user_id,
     )
     try:
         async for event in inner:

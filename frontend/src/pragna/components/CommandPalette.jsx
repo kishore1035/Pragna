@@ -15,6 +15,8 @@ const CHAT_MODES = [
 
 const NAV_VIEWS = [
   { id: 'chats', label: 'Chats' },
+  { id: 'chat-history-folders', label: 'History & Folders' },
+  { id: 'tasks', label: 'Tasks & Kanban' },
   { id: 'images', label: 'Images' },
   { id: 'starred', label: 'Starred requests' },
 ]

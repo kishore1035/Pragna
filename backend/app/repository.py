@@ -7,9 +7,13 @@ def _now() -> str:
 
 
 def create_user(conn, email: str, password_hash: str, name: str | None = None) -> int:
+    if not email or not isinstance(email, str) or not email.strip():
+        raise ValueError("A valid email address is required to create a user.")
+    if not password_hash or not isinstance(password_hash, str) or not password_hash.strip():
+        raise ValueError("A valid password hash is required to create a user.")
     cur = conn.execute(
         "INSERT INTO users (email, password_hash, created_at, name) VALUES (?, ?, ?, ?)",
-        (email, password_hash, _now(), name),
+        (email.strip().lower(), password_hash, _now(), name),
     )
     conn.commit()
     return cur.lastrowid

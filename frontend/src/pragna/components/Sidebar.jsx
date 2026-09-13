@@ -337,6 +337,9 @@ ${turns}
         return <CodeIcon size={18} />
       case 'starred':
         return <StarredIcon size={18} />
+      case 'chat-history-folders':
+      case 'history':
+        return <FolderIcon size={18} />
       default:
         return null
     }
@@ -355,6 +358,7 @@ ${turns}
 
   const navItemsList = [
     { id: 'chats', label: 'Chats' },
+    { id: 'chat-history-folders', label: 'History & Folders' },
     { id: 'tasks', label: 'Tasks & Kanban' },
     { id: 'images', label: 'Images' },
     { id: 'agent', label: 'Coding Agent' },

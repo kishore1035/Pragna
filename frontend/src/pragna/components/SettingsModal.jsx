@@ -4,6 +4,8 @@ import { changePassword, deleteAccount } from '../../api/api'
 import { SUPPORTED_LANGUAGE_OPTIONS } from '../../utils/language'
 import PasswordInput from '../../components/ui/PasswordInput'
 import { useMediaQuery } from '../hooks/useMediaQuery'
+import SkillsSettings from './SkillsSettings'
+import MemorySettings from './MemorySettings'
 import {
   SettingsIcon,
   SunIcon,
@@ -214,6 +216,10 @@ const SettingsModal = ({ isOpen, onClose, onLogout, userProfile }) => {
         return <SettingsIcon size={16} />
       case 'sun':
         return <SunIcon size={16} />
+      case 'sparkles':
+        return <SparklesIcon size={16} />
+      case 'brain':
+        return <BotIcon size={16} />
       case 'shield':
         return <ShieldIcon size={16} />
       case 'download':
@@ -228,6 +234,8 @@ const SettingsModal = ({ isOpen, onClose, onLogout, userProfile }) => {
   const tabs = [
     { label: 'General', icon: 'gear' },
     { label: 'Preferences', icon: 'sun' },
+    { label: 'Skills', icon: 'sparkles' },
+    { label: 'Memory', icon: 'brain' },
     { label: 'Account', icon: 'shield' },
     { label: 'Data', icon: 'download' },
     { label: 'About Pragna', icon: 'info' },
@@ -449,6 +457,20 @@ const SettingsModal = ({ isOpen, onClose, onLogout, userProfile }) => {
                   <span style={{ fontSize: '12.5px', color: '#8fd19e' }}>Saved.</span>
                 )}
               </div>
+            </div>
+          )}
+
+          {/* SKILLS TAB */}
+          {activeTab === 'Skills' && (
+            <div style={{ animation: 'fadeUp 0.15s ease' }}>
+              <SkillsSettings />
+            </div>
+          )}
+
+          {/* MEMORY TAB */}
+          {activeTab === 'Memory' && (
+            <div style={{ animation: 'fadeUp 0.15s ease' }}>
+              <MemorySettings />
             </div>
           )}
 
