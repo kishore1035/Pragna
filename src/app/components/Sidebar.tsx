@@ -21,7 +21,6 @@ import {
   Download,
   Search,
   Settings,
-  Sparkles,
 } from 'lucide-react';
 import { Conversation, ConversationGroup } from '../types/chat';
 import AppLogo from '@/components/ui/AppLogo';
@@ -190,9 +189,6 @@ export default function Sidebar({
             >
               <Wrench size={17} strokeWidth={1.8} className="flex-shrink-0 text-muted-foreground group-hover:text-foreground transition-colors" />
               <span className="flex-1 text-left">Tools & Skills</span>
-              <span className="text-[0.625rem] px-1.5 py-0.5 rounded-md bg-primary/15 text-primary font-semibold tracking-wide uppercase">
-                Active
-              </span>
             </button>
             <button
               onClick={onOpenVoice}
@@ -200,16 +196,6 @@ export default function Sidebar({
             >
               <Mic size={17} strokeWidth={1.8} className="flex-shrink-0 text-muted-foreground group-hover:text-foreground transition-colors" />
               <span className="flex-1 text-left">Voice Assistant</span>
-            </button>
-            <button
-              onClick={() => router.push('/input-demo')}
-              className="flex items-center gap-2.5 w-full px-3 py-2 rounded-lg text-sm text-muted-foreground hover:text-foreground hover:bg-sidebar-hover transition-all duration-150 group"
-            >
-              <Sparkles size={17} strokeWidth={1.8} className="flex-shrink-0 text-primary group-hover:scale-110 transition-transform" />
-              <span className="flex-1 text-left">AI Input Showcase</span>
-              <span className="text-[0.625rem] px-1.5 py-0.5 rounded-md bg-primary/20 text-primary font-semibold tracking-wide uppercase">
-                New
-              </span>
             </button>
           </div>
 
