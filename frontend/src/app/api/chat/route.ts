@@ -61,17 +61,17 @@ function sseChunk(content: string): string {
   })}\n\n`;
 }
 
-// Quick heuristic to detect if the prompt asks for real-time external info or system actions.
-// Keep this list TIGHT — false positives send chat through the slow tool-deliberation loop.
+// Keep this list TIGHT — false positives send chat through the slow non-streaming tool-deliberation loop.
+// Only trigger for messages that CANNOT be answered without executing a real tool.
 function queryNeedsTools(messages: any[]): boolean {
   if (!messages || messages.length === 0) return false;
   const last = messages[messages.length - 1]?.content?.toLowerCase() || '';
   const triggers = [
-    'search for', 'google', 'browse', 'web search',
-    'what is the price', 'stock price', 'weather in', 'news about',
-    'run python', 'run code', 'execute', 'terminal',
-    'write to file', 'read file', 'kanban', 'todo list',
-    'who won', 'latest score', 'current prime minister', 'cm of',
+    'search for ', 'google for ', 'browse to ', 'web search',
+    'run python', 'run code', 'execute code', 'run this script',
+    'open terminal', 'run in terminal',
+    'write to file', 'save to file', 'read file',
+    'add to kanban', 'add to todo',
   ];
   return triggers.some(t => last.includes(t));
 }
@@ -526,11 +526,24 @@ export async function POST(req: NextRequest) {
               }
 
               if (!res.ok) {
-                const failText = await res.text();
-                sendText(`\n\n*(Error calling AI model: ${failText})*\n`);
+                // All OpenRouter paths failed — fall back to Ollama Cloud streaming (no tools)
+                const ollamaKey = process.env.OLLAMA_API_KEY || '26a95f0c5431431d8338645cdde4998f.CyDoeN4fDrSTJum8dpfRglps';
+                const ollamaFallback = await fetch('https://api.ollama.com/api/chat', {
+                  method: 'POST',
+                  headers: { Authorization: `Bearer ${ollamaKey}`, 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    model: 'gemma4:cloud',
+                    messages: conversationHistory.map((m: any) => ({ role: m.role, content: m.content || '' })),
+                    stream: true,
+                  }),
+                });
+                if (ollamaFallback.ok) {
+                  await pipeOllamaStream(ollamaFallback);
+                }
                 break;
               }
             }
+
 
             const data = await res.json();
             const choice = data.choices?.[0];
