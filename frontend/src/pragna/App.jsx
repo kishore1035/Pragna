@@ -1,0 +1,473 @@
+import { useCallback, useContext, useEffect, useMemo, useState } from 'react'
+import { ChatContext } from '../context/ChatContext'
+import { generateAIImage, generateDocument, sendOrchestratedMessageStream } from '../api/api'
+import { normalizeLanguageCode } from '../utils/language'
+import MainLayout from './layouts/MainLayout'
+import ImageStudioPage from './pages/ImageStudioPage'
+import ComparePage from './pages/ComparePage'
+import StarredRequestsPage from './pages/StarredRequestsPage'
+import TasksPage from './pages/TasksPage'
+import ChatHistoryFoldersPage from './pages/ChatHistoryFoldersPage'
+import ChatWindow from '../components/chat/ChatWindow'
+import NewChatView from './components/NewChatView'
+
+import InputBar from '../components/input/InputBar'
+import AgentPanel from '../components/agent/AgentPanel'
+import SettingsModal from './components/SettingsModal'
+import ShortcutsHelpModal from './components/ShortcutsHelpModal'
+import CommandPalette from './components/CommandPalette'
+import ArtifactPanel from '../components/artifact/ArtifactPanel'
+import VoiceAssistantModal from '../components/voice/VoiceAssistantModal'
+
+
+const IMAGE_REQUEST_RE = /(create|generate|make|design)\s+(an?\s+)?(ai\s+)?image|image\s+of|illustration\s+of|poster\s+of|logo\s+of/i
+
+const extractImagePrompt = (text) => {
+  const raw = (text || '').trim()
+  if (!raw) return ''
+  return raw
+    .replace(/^(please\s+)?(create|generate|make|design)\s+(an?\s+)?(ai\s+)?(image|picture|photo|illustration)\s+(of|for)?\s*/i, '')
+    .trim() || raw
+}
+
+const DOCUMENT_VERB_RE = /\b(create|generate|make|write|draft|build|export|give\s+me)\b.*\b(word(\s*(doc(ument)?|file))?|\bdocx\b|\bdoc(ument)?\b|report|excel(\s*(sheet|spreadsheet|file))?|spreadsheet|\bxlsx\b|\bpdf(\s*file)?\b|power\s*point(\s*(presentation|deck|file|slides?))?|presentation|slides?|\bpptx\b)\b/i
+
+const DOCUMENT_FORMAT_PATTERNS = [
+  { format: 'pptx', re: /power\s*point|presentation|slides?|\bpptx\b/i },
+  { format: 'xlsx', re: /excel|spreadsheet|sheet|\bxlsx\b/i },
+  { format: 'pdf', re: /\bpdf\b/i },
+  { format: 'docx', re: /word(\s*(doc(ument)?|file))?|\bdoc(ument)?\b|\bdocx\b|report/i },
+]
+
+const extractDocumentRequest = (text) => {
+  const raw = (text || '').trim()
+  if (!raw || !DOCUMENT_VERB_RE.test(raw)) return null
+  const match = DOCUMENT_FORMAT_PATTERNS.find((p) => p.re.test(raw))
+  if (!match) return null
+  const subject = raw
+    .replace(/^(please\s+)?(create|generate|make|write|draft|build|export|give\s+me)\s+(me\s+)?(an?\s+)?(ms\s*)?((word(\s*(doc(ument)?|file))?|\bdocx\b|\bdoc(ument)?\b|excel(\s*(sheet|spreadsheet|file))?|spreadsheet|\bxlsx\b|pdf(\s*file)?|power\s*point(\s*(presentation|deck|file))?|presentation|slides?|\bpptx\b|report))\s*(about|on|for|regarding|with|containing|and|to|,)?\s*/i, '')
+    .trim() || raw
+  return { format: match.format, subject }
+}
+
+function App({ onLogout, userProfile }) {
+  const [activeView, setActiveView] = useState(() => localStorage.getItem('pragna_nav_view') || 'chats')
+  const [imagePrompt, setImagePrompt] = useState('')
+  const [imageStyle, setImageStyle] = useState('cinematic')
+  const [imageQuality, setImageQuality] = useState('hd')
+  const [imageSize, setImageSize] = useState('1024x1024')
+  const [isGeneratingImage, setIsGeneratingImage] = useState(false)
+  const [generatedImage, setGeneratedImage] = useState(null)
+  const [imageError, setImageError] = useState('')
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [shortcutsHelpOpen, setShortcutsHelpOpen] = useState(false)
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false)
+
+  const {
+    chats,
+    setChats,
+    activeChatId,
+    setActiveChatId,
+    newChat,
+    deleteChat,
+    language,
+    isLoading,
+    setIsLoading,
+    chatMode,
+    setChatMode,
+    personas,
+    activePersonaId,
+    activeArtifact,
+    isArtifactOpen,
+    openArtifact,
+    closeArtifact,
+    isVoiceAssistantOpen,
+    setIsVoiceAssistantOpen,
+    sendVoiceChatMessage,
+    lastAssistantMessage,
+  } = useContext(ChatContext)
+
+
+  useEffect(() => {
+    localStorage.setItem('pragna_nav_view', activeView)
+  }, [activeView])
+
+  const recentChats = useMemo(() => chats.slice(0, 10), [chats])
+
+  const sendQuickPrompt = useCallback(async (prompt) => {
+    if (!prompt?.trim() || isLoading) return
+
+    let targetChatId = activeChatId
+    let currentChat = chats.find((c) => c.id === activeChatId)
+
+    if (!targetChatId || !currentChat) {
+      const newId = Date.now().toString()
+      const newChatObj = {
+        id: newId,
+        title: 'New chat',
+        messages: [],
+      }
+      setChats((prev) => [newChatObj, ...prev])
+      setActiveChatId(newId)
+      targetChatId = newId
+      currentChat = newChatObj
+    }
+
+    const updatedMessages = [...currentChat.messages, { sender: 'user', text: prompt, attachments: [] }]
+    const botMsg = { sender: 'bot', text: '', isStreaming: true }
+
+    setChats((prev) =>
+      prev.map((c) =>
+        c.id === targetChatId ? { ...c, messages: [...updatedMessages, botMsg] } : c
+      )
+    )
+    setActiveView('chats')
+    setIsLoading(true)
+
+    try {
+      const docRequest = extractDocumentRequest(prompt)
+      if (docRequest) {
+        const docResult = await generateDocument({
+          format: docRequest.format,
+          prompt: docRequest.subject,
+          language: normalizeLanguageCode(language),
+        })
+
+        setIsLoading(false)
+        openArtifact?.({
+          id: `doc-${Date.now()}`,
+          title: docResult.filename || `${docRequest.subject}.${docRequest.format}`,
+          type: docRequest.format === 'pdf' ? 'pdf' : 'document',
+          format: docRequest.format,
+          downloadUrl: docResult.download_url,
+          content: `# ${docResult.filename || 'Generated Document'}\n\nDocument ready for preview and download.\n- Format: ${docRequest.format?.toUpperCase()}\n- File: ${docResult.filename}\n- Status: Ready`,
+        })
+        setChats((prev) =>
+          prev.map((c) =>
+            c.id === targetChatId
+              ? {
+                  ...c,
+                  messages: c.messages.map((m, idx) =>
+                    idx === c.messages.length - 1
+                      ? {
+                          ...m,
+                          text: 'Generated document ready.',
+                          isStreaming: false,
+                          attachments: [
+                            {
+                              name: docResult.filename,
+                              type: 'document',
+                              downloadUrl: docResult.download_url,
+                              format: docRequest.format,
+                            },
+                          ],
+                        }
+                      : m
+                  ),
+                }
+              : c
+          )
+        )
+        return
+      }
+
+      if (IMAGE_REQUEST_RE.test(prompt)) {
+        const imageResult = await generateAIImage({
+          prompt: extractImagePrompt(prompt),
+          style: 'cinematic',
+          quality: 'hd',
+          size: '1024x1024',
+        })
+
+        setIsLoading(false)
+        setChats((prev) =>
+          prev.map((c) =>
+            c.id === targetChatId
+              ? {
+                  ...c,
+                  messages: c.messages.map((m, idx) =>
+                    idx === c.messages.length - 1
+                      ? {
+                          ...m,
+                          text: 'Generated image ready.',
+                          isStreaming: false,
+                          attachments: [
+                            {
+                              name: `generated-${Date.now()}.png`,
+                              type: 'image',
+                              previewUrl: imageResult.image,
+                            },
+                          ],
+                        }
+                      : m
+                  ),
+                }
+              : c
+          )
+        )
+        return
+      }
+
+      const activePersona = personas.find((p) => p.id === activePersonaId)
+
+      let sawResponse = false
+      await sendOrchestratedMessageStream({
+        text: prompt,
+        language: normalizeLanguageCode(language),
+        user_id: targetChatId,
+        chatMode,
+        personaSystemPrompt: activePersona?.system_prompt,
+        onChunk: (chunk) => {
+          sawResponse = true
+          setChats((prev) =>
+            prev.map((c) =>
+              c.id === targetChatId
+                ? {
+                    ...c,
+                    messages: c.messages.map((m, idx) =>
+                      idx === c.messages.length - 1 ? { ...m, text: (m.text || '') + chunk } : m
+                    ),
+                  }
+                : c
+            )
+          )
+        },
+        onSources: (sources) => {
+          setChats((prev) =>
+            prev.map((c) =>
+              c.id === targetChatId
+                ? {
+                    ...c,
+                    messages: c.messages.map((m, idx) =>
+                      idx === c.messages.length - 1 ? { ...m, sources } : m
+                    ),
+                  }
+                : c
+            )
+          )
+        },
+        onDone: () => {
+          setIsLoading(false)
+          setChats((prev) =>
+            prev.map((c) =>
+              c.id === targetChatId
+                ? {
+                    ...c,
+                    messages: c.messages.map((m, idx) =>
+                      idx === c.messages.length - 1 ? { ...m, isStreaming: false } : m
+                    ),
+                  }
+                : c
+            )
+          )
+        },
+      })
+
+      if (!sawResponse) {
+        throw new Error('Invalid response from server')
+      }
+    } catch (err) {
+      setIsLoading(false)
+      setChats((prev) =>
+        prev.map((c) =>
+          c.id === targetChatId
+            ? {
+                ...c,
+                messages: c.messages.map((m, idx) =>
+                  idx === c.messages.length - 1
+                    ? { ...m, text: 'Server error. Please try again.', isStreaming: false, error: true }
+                    : m
+                ),
+              }
+            : c
+        )
+      )
+    }
+  }, [activeChatId, activePersonaId, chatMode, chats, isLoading, language, personas, setActiveChatId, setChats, setIsLoading])
+
+  const handleNewChat = useCallback(() => {
+    newChat()
+    setActiveView('chats')
+  }, [newChat])
+
+  // Global keyboard shortcuts: Ctrl/Cmd+K opens the command palette (chat
+  // search + every action live there now), Ctrl/Cmd+Shift+O new chat,
+  // Ctrl/Cmd+/ toggle help
+  useEffect(() => {
+    const handleGlobalKeydown = (e) => {
+      const mod = e.ctrlKey || e.metaKey
+      if (!mod) return
+
+      const key = e.key.toLowerCase()
+
+      if (key === 'k' && !e.shiftKey) {
+        if (settingsOpen || shortcutsHelpOpen) return
+        e.preventDefault()
+        setCommandPaletteOpen((prev) => !prev)
+      } else if (key === 'o' && e.shiftKey) {
+        if (settingsOpen || shortcutsHelpOpen) return
+        e.preventDefault()
+        handleNewChat()
+      } else if (e.key === '/') {
+        if (settingsOpen) return
+        e.preventDefault()
+        setShortcutsHelpOpen((prev) => !prev)
+      }
+    }
+    document.addEventListener('keydown', handleGlobalKeydown)
+    return () => document.removeEventListener('keydown', handleGlobalKeydown)
+  }, [settingsOpen, shortcutsHelpOpen, handleNewChat])
+
+  const handleGenerateImage = async () => {
+    if (!imagePrompt.trim() || isGeneratingImage) return
+    setIsGeneratingImage(true)
+    setImageError('')
+
+    try {
+      const data = await generateAIImage({
+        prompt: imagePrompt.trim(),
+        style: imageStyle,
+        quality: imageQuality,
+        size: imageSize,
+      })
+      setGeneratedImage(data)
+    } catch (err) {
+      setImageError(err?.message || 'Image generation failed.')
+    } finally {
+      setIsGeneratingImage(false)
+    }
+  }
+
+  const renderView = () => {
+    if (activeView === 'chats') {
+      const activeChat = chats.find((c) => c.id === activeChatId)
+      const hasMessages = activeChat && activeChat.messages && activeChat.messages.length > 0
+
+      if (!hasMessages) {
+        return <NewChatView onNavigateToImages={() => setActiveView('images')} />
+      }
+
+      return (
+        <div className="flex-1 flex flex-col min-h-0 h-full overflow-hidden relative">
+          <ChatWindow />
+          <InputBar />
+        </div>
+      )
+    }
+
+    if (activeView === 'images') {
+      return (
+        <ImageStudioPage
+          imagePrompt={imagePrompt}
+          setImagePrompt={setImagePrompt}
+          imageStyle={imageStyle}
+          setImageStyle={setImageStyle}
+          imageQuality={imageQuality}
+          setImageQuality={setImageQuality}
+          imageSize={imageSize}
+          setImageSize={setImageSize}
+          isGeneratingImage={isGeneratingImage}
+          generatedImage={generatedImage}
+          setGeneratedImage={setGeneratedImage}
+          imageError={imageError}
+          onGenerate={handleGenerateImage}
+          onSendToChat={() =>
+            sendQuickPrompt(`Create an image prompt for: ${imagePrompt || 'a cinematic visual concept'}`)
+          }
+        />
+      )
+    }
+
+    if (activeView === 'starred') {
+      return (
+        <StarredRequestsPage
+          chats={chats}
+          setChats={setChats}
+          onOpenChat={(targetChatId) => {
+            setActiveChatId(targetChatId)
+            setActiveView('chats')
+          }}
+        />
+      )
+    }
+
+    if (activeView === 'tasks') {
+      return <TasksPage />
+    }
+
+    if (activeView === 'compare') {
+      return <ComparePage />
+    }
+
+    if (activeView === 'chat-history-folders' || activeView === 'history') {
+      return (
+        <ChatHistoryFoldersPage
+          onSelectChat={(targetChatId) => {
+            setActiveChatId(targetChatId)
+            setActiveView('chats')
+          }}
+        />
+      )
+    }
+
+    if (activeView === 'agent') {
+      return (
+        <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+          <AgentPanel />
+        </div>
+      )
+    }
+
+    return <HomePage onUsePrompt={sendQuickPrompt} userProfile={userProfile} />
+  }
+
+  return (
+    <>
+      <MainLayout
+        activeView={activeView}
+        onViewChange={setActiveView}
+        recentChats={recentChats}
+        activeChatId={activeChatId}
+        onSelectRecent={setActiveChatId}
+        onDeleteRecent={deleteChat}
+        onNewChat={handleNewChat}
+        onLogout={onLogout}
+        userProfile={userProfile}
+        onOpenSettings={() => setSettingsOpen(true)}
+      >
+        {renderView()}
+      </MainLayout>
+
+      <SettingsModal
+        isOpen={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        onLogout={onLogout}
+        userProfile={userProfile}
+      />
+
+      <ShortcutsHelpModal
+        isOpen={shortcutsHelpOpen}
+        onClose={() => setShortcutsHelpOpen(false)}
+      />
+
+      <CommandPalette
+        isOpen={commandPaletteOpen}
+        onClose={() => setCommandPaletteOpen(false)}
+        onNavigate={setActiveView}
+        onOpenSettings={() => setSettingsOpen(true)}
+      />
+
+      <VoiceAssistantModal
+        isOpen={isVoiceAssistantOpen}
+        onClose={() => setIsVoiceAssistantOpen(false)}
+        currentLanguage={language}
+        onSendMessage={sendVoiceChatMessage}
+        lastAssistantMessage={lastAssistantMessage}
+        isGenerating={isLoading}
+      />
+    </>
+
+  )
+}
+
+export default App

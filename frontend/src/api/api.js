@@ -1,0 +1,798 @@
+import axios from "axios";
+import { normalizeLanguageCode } from "../utils/language";
+
+// In dev, VITE_API_URL is unset so this resolves to "" and every call below
+// stays same-origin, which Vite's dev-server proxy (vite.config.js) forwards
+// to the local backend. In production, set VITE_API_URL to the deployed
+// backend's origin (see render.yaml) so calls reach it directly instead of
+// the static frontend host.
+export const API_BASE = import.meta.env.VITE_API_URL || "";
+
+const api = axios.create({
+  baseURL: `${API_BASE}/api`,
+});
+
+const _csvToList = (value) =>
+  (value || "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+const _resolveModelProfileRouting = () => {
+  // When VITE_MODEL_PROFILE_*_KEY isn't configured at build time, send no
+  // override at all (undefined keys are dropped by JSON.stringify) so the
+  // backend's own DEFAULT_MODEL_KEY/DEFAULT_MODEL_FALLBACKS chain applies -
+  // never hardcode a specific model here, since one that isn't actually
+  // available on the deployed backend breaks every chat request silently.
+  const rawProfile = (localStorage.getItem("pragna_model_profile") || "basic").toLowerCase();
+  const profile = rawProfile === "instant" ? "basic" : rawProfile === "expert" ? "pro" : rawProfile;
+
+  const instantOverride = import.meta.env.VITE_MODEL_PROFILE_LIGHT_KEY || undefined;
+  const instantFallbacks =
+    _csvToList(import.meta.env.VITE_MODEL_PROFILE_LIGHT_FALLBACKS) || [];
+
+  const expertOverride = import.meta.env.VITE_MODEL_PROFILE_HEAVY_KEY || undefined;
+  const expertFallbacks =
+    _csvToList(import.meta.env.VITE_MODEL_PROFILE_HEAVY_FALLBACKS) || [];
+
+  if (profile === "pro") {
+    return {
+      model_override: expertOverride,
+      fallback_models: expertFallbacks.length ? expertFallbacks : undefined,
+    };
+  }
+
+  return {
+    model_override: instantOverride,
+    fallback_models: instantFallbacks.length ? instantFallbacks : undefined,
+  };
+};
+
+export const runResponseActions = (payload) => {
+  const actions = payload?.actions || [];
+  actions.forEach((action) => {
+    if (action?.action === "open_url" && action?.url) {
+      try {
+        window.open(action.url, "_blank", "noopener,noreferrer");
+      } catch (error) {
+        console.warn("Unable to open action URL:", action.url, error);
+      }
+    }
+  });
+};
+
+export const sendText = (text, language, user_id) =>
+  api.post("/process_text", {
+    text,
+    language: normalizeLanguageCode(language),
+    user_id,
+  });
+
+export const sendAudio = (audioBlob, language, user_id) => {
+  const form = new FormData();
+  form.append("audio", audioBlob);
+  form.append("language", normalizeLanguageCode(language));
+  form.append("user_id", user_id);
+
+  return api.post("/process_audio", form);
+};
+
+export const sendOrchestratedMessage = async (
+  text,
+  language,
+  user_id,
+  chatMode = "general",
+  extendedThinking = false
+) => {
+  const normalizedLanguage = normalizeLanguageCode(language);
+  const modelRouting = _resolveModelProfileRouting();
+
+  const response = await fetch(`${API_BASE}/api/orchestrator/query`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ..._authHeaders(),
+    },
+    body: JSON.stringify({
+      message: text,
+      language: normalizedLanguage,
+      user_id,
+      chat_mode: chatMode,
+      model_override: modelRouting.model_override,
+      fallback_models: modelRouting.fallback_models,
+      extended_thinking: extendedThinking,
+      client_timezone: _getClientTimezone(),
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error("Server error. Please try again.");
+  }
+
+  const data = await response.json();
+  runResponseActions(data);
+  return data;
+};
+
+export const sendOrchestratedMessageStream = async ({
+  text,
+  language,
+  user_id,
+  chatMode = "general",
+  personaSystemPrompt,
+  extendedThinking = false,
+  signal,
+  onChunk,
+  onSources,
+  onArtifact,
+  onThinking,
+  onDone,
+}) => {
+  const normalizedLanguage = normalizeLanguageCode(language);
+  const modelRouting = _resolveModelProfileRouting();
+
+  const response = await fetch(`${API_BASE}/api/chat_stream`, {
+    method: "POST",
+    signal,
+    headers: {
+      "Content-Type": "application/json",
+      ..._authHeaders(),
+    },
+    body: JSON.stringify({
+      message: text,
+      language: normalizedLanguage,
+      user_id,
+      chat_mode: chatMode,
+      model_override: modelRouting.model_override,
+      fallback_models: modelRouting.fallback_models,
+      extended_thinking: extendedThinking,
+      client_timezone: _getClientTimezone(),
+      ...(personaSystemPrompt ? { persona_system_prompt: personaSystemPrompt } : {}),
+    }),
+  });
+
+  if (!response.ok) {
+    if (response.status === 401) {
+      localStorage.removeItem("authToken");
+      localStorage.removeItem("userId");
+    }
+    throw new Error("Server error. Please try again.");
+  }
+
+  await _consumeSSE(response, (event) => {
+    if (event.thinking) {
+      onThinking?.(event.thinking);
+    } else if (event.type === "artifact") {
+      onArtifact?.(event);
+    } else if (event.content) {
+      onChunk?.(event.content);
+      onToken?.(event.content);
+    } else if (event.sources) {
+      onSources?.(event.sources);
+    } else if (event.actions) {
+      runResponseActions({ actions: event.actions });
+    } else if (event.type === "done") {
+      onDone?.();
+    } else if (event.type === "error") {
+      throw new Error(event.message || "Streaming failed");
+    }
+  });
+};
+
+
+export const sendOrchestratedUploadMessage = async (
+  text,
+  language,
+  user_id,
+  chatMode = "general",
+  attachments = [],
+  extendedThinking = false
+) => {
+  const normalizedLanguage = normalizeLanguageCode(language);
+  const modelRouting = _resolveModelProfileRouting();
+  const formData = new FormData();
+
+  formData.append("message", text || "");
+  formData.append("language", normalizedLanguage);
+  formData.append("user_id", user_id);
+  formData.append("chat_mode", chatMode);
+  formData.append("model_override", modelRouting.model_override);
+  formData.append("fallback_models", JSON.stringify(modelRouting.fallback_models || []));
+  if (extendedThinking) {
+    formData.append("extended_thinking", "true");
+  }
+
+  attachments.forEach((item) => {
+    if (!item?.file) return;
+    formData.append("files", item.file, item.file.name);
+    formData.append("relative_paths", item.relativePath || item.name || item.file.name);
+    formData.append("attachment_types", item.type || "file");
+  });
+
+  const response = await fetch(`${API_BASE}/api/orchestrator/analyze_uploads`, {
+    method: "POST",
+    headers: _authHeaders(),
+    body: formData,
+  });
+
+  if (!response.ok) {
+    throw new Error("Server error. Please try again.");
+  }
+
+  const data = await response.json();
+  runResponseActions(data);
+  return data;
+};
+
+export const sendMessage = async (
+  text,
+  language,
+  user_id,
+  chatMode = "general",
+  extendedThinking = false
+) => {
+  const normalizedLanguage = normalizeLanguageCode(language);
+  const modelRouting = _resolveModelProfileRouting();
+
+  const response = await fetch(`${API_BASE}/api/chat`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ..._authHeaders(),
+    },
+    body: JSON.stringify({
+      message: text,
+      language: normalizedLanguage,
+      user_id,
+      chat_mode: chatMode,
+      model_override: modelRouting.model_override,
+      fallback_models: modelRouting.fallback_models,
+      extended_thinking: extendedThinking,
+      client_timezone: _getClientTimezone(),
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error("Server error. Please try again.");
+  }
+
+  const data = await response.json();
+  runResponseActions(data);
+  return data;
+};
+
+export const getRealtimeEventsFeed = async (limit = 20, focus = "india") => {
+  const response = await fetch(`${API_BASE}/api/events/feed?limit=${limit}&focus=${encodeURIComponent(focus)}`);
+  if (!response.ok) {
+    throw new Error("Failed to fetch realtime events feed.");
+  }
+  return response.json();
+};
+
+export const getDashboardGeoSummary = async (limit = 50, focus = "india") => {
+  const response = await fetch(`${API_BASE}/api/dashboard/geo?limit=${limit}&focus=${encodeURIComponent(focus)}`);
+  if (!response.ok) {
+    throw new Error("Failed to fetch geo dashboard summary.");
+  }
+  return response.json();
+};
+
+export const getPlatformStatus = async () => {
+  const response = await fetch(`${API_BASE}/api/platform/status`);
+  if (!response.ok) {
+    throw new Error("Failed to fetch platform status.");
+  }
+  return response.json();
+};
+
+export const getWorldMonitorConfig = async () => {
+  const response = await fetch(`${API_BASE}/api/world-monitor/config`);
+  if (!response.ok) {
+    throw new Error("Failed to fetch World Monitor configuration.");
+  }
+  return response.json();
+};
+
+export const getRagSchedulerStatus = async () => {
+  const response = await fetch(`${API_BASE}/api/rag/scheduler/status`);
+  if (!response.ok) {
+    throw new Error("Failed to fetch RAG scheduler status.");
+  }
+  return response.json();
+};
+
+export const forceRagUpdate = async () => {
+  const response = await fetch(`${API_BASE}/api/rag/scheduler/force_update`, { method: "POST" });
+  if (!response.ok) {
+    throw new Error("Failed to force RAG update.");
+  }
+  return response.json();
+};
+
+export const enableRagScheduler = async () => {
+  const response = await fetch(`${API_BASE}/api/rag/scheduler/enable`, { method: "POST" });
+  if (!response.ok) {
+    throw new Error("Failed to enable RAG scheduler.");
+  }
+  return response.json();
+};
+
+export const disableRagScheduler = async () => {
+  const response = await fetch(`${API_BASE}/api/rag/scheduler/disable`, { method: "POST" });
+  if (!response.ok) {
+    throw new Error("Failed to disable RAG scheduler.");
+  }
+  return response.json();
+};
+
+export const getModelsCatalog = async () => {
+  const response = await fetch(`${API_BASE}/api/models/catalog`);
+  if (!response.ok) {
+    throw new Error("Failed to fetch models catalog.");
+  }
+  return response.json();
+};
+
+export const getSharedChat = async (token) => {
+  const response = await fetch(`${API_BASE}/api/share/${encodeURIComponent(token)}`);
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data?.error || "This shared chat link is invalid or has expired.");
+  }
+  return data;
+};
+
+export const runCompare = async ({ message, models, language = "en" }) => {
+  const response = await fetch(`${API_BASE}/api/compare`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      message,
+      models,
+      language: normalizeLanguageCode(language),
+    }),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data?.error || "Failed to run comparison.");
+  }
+  return data;
+};
+
+export const summarizeChat = async (messages, language) => {
+  const response = await fetch(`${API_BASE}/api/summarize_chat`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ messages, language: normalizeLanguageCode(language) }),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data?.error || "Failed to summarize chat.");
+  }
+  return data;
+};
+
+export const getImageStudioConfig = async () => {
+  try {
+    const response = await fetch(`${API_BASE}/api/images/config`);
+    if (!response.ok) return null;
+    return await response.json();
+  } catch {
+    return null;
+  }
+};
+
+export const getImageHistory = async (limit = 50, offset = 0) => {
+  try {
+    const token = localStorage.getItem('authToken');
+    const headers = token ? { Authorization: `Bearer ${token}` } : {};
+    const userId = localStorage.getItem('userId') || '';
+    const query = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+    if (userId) query.append('user_id', userId);
+
+    const response = await fetch(`${API_BASE}/api/images/history?${query.toString()}`, { headers });
+    if (!response.ok) return { history: [], count: 0 };
+    return await response.json();
+  } catch {
+    return { history: [], count: 0 };
+  }
+};
+
+export const deleteImageHistoryItem = async (imageId) => {
+  try {
+    const token = localStorage.getItem('authToken');
+    const headers = token ? { Authorization: `Bearer ${token}` } : {};
+    const userId = localStorage.getItem('userId') || '';
+    const query = userId ? `?user_id=${encodeURIComponent(userId)}` : '';
+
+    const response = await fetch(`${API_BASE}/api/images/history/${encodeURIComponent(imageId)}${query}`, {
+      method: "DELETE",
+      headers,
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
+};
+
+export const clearImageHistory = async () => {
+  try {
+    const token = localStorage.getItem('authToken');
+    const headers = token ? { Authorization: `Bearer ${token}` } : {};
+    const userId = localStorage.getItem('userId') || '';
+    const query = userId ? `?user_id=${encodeURIComponent(userId)}` : '';
+
+    const response = await fetch(`${API_BASE}/api/images/history${query}`, {
+      method: "DELETE",
+      headers,
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
+};
+
+export const generateAIImage = async ({ prompt, style = "cinematic", quality = "hd", size = "1024x1024" }) => {
+  let response;
+  const token = localStorage.getItem('authToken');
+  const userId = localStorage.getItem('userId') || '';
+  const headers = {
+    "Content-Type": "application/json",
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
+
+  try {
+    response = await fetch(`${API_BASE}/api/images/generate`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ prompt, style, quality, size, user_id: userId }),
+    });
+  } catch (err) {
+    throw new Error("Cannot reach backend. Start/restart backend server on port 5001.");
+  }
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    if (response.status === 404) {
+      throw new Error("Image API not found. Restart backend to load the new /api/images/generate route.");
+    }
+    if (response.status === 503) {
+      throw new Error(data?.error || "Image generation is currently unavailable on backend.");
+    }
+    throw new Error(data?.error || "Image generation failed.");
+  }
+  return data;
+};
+
+export const generateDocument = async ({ format, prompt, language = "en" }) => {
+  let response;
+  try {
+    response = await fetch(`${API_BASE}/api/documents/generate`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ format, prompt, language }),
+    });
+  } catch (err) {
+    throw new Error("Cannot reach backend. Start/restart backend server on port 5001.");
+  }
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    if (response.status === 404) {
+      throw new Error("Document API not found. Restart backend to load the new /api/documents/generate route.");
+    }
+    throw new Error(data?.error || "Document generation failed.");
+  }
+  // download_url comes back as a relative path (e.g. /api/documents/download/x.docx).
+  // Frontend and backend are separate origins in production, so a relative URL
+  // would resolve against the frontend's own host instead of the backend - make
+  // it absolute here so every caller gets a working link automatically.
+  if (data?.download_url && !/^https?:\/\//i.test(data.download_url)) {
+    data.download_url = `${API_BASE}${data.download_url}`;
+  }
+  return data;
+};
+
+export const listPersonas = async () => {
+  const response = await fetch(`${API_BASE}/api/personas`, {
+    headers: _authHeaders(),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data?.error || "Failed to list personas.");
+  }
+  return data;
+};
+
+export const createPersona = async ({ name, system_prompt }) => {
+  const response = await fetch(`${API_BASE}/api/personas`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ..._authHeaders() },
+    body: JSON.stringify({ name, system_prompt }),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data?.error || "Failed to create persona.");
+  }
+  return data;
+};
+
+export const updatePersona = async (id, { name, system_prompt }) => {
+  const response = await fetch(`${API_BASE}/api/personas/${id}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ..._authHeaders() },
+    body: JSON.stringify({ name, system_prompt }),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data?.error || "Failed to update persona.");
+  }
+  return data;
+};
+
+export const deletePersona = async (id) => {
+  const response = await fetch(`${API_BASE}/api/personas/${id}`, {
+    method: "DELETE",
+    headers: _authHeaders(),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data?.error || "Failed to delete persona.");
+  }
+  return data;
+};
+
+export const changePassword = async (currentPassword, newPassword) => {
+  const response = await fetch(`${API_BASE}/api/auth/change-password`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ..._authHeaders() },
+    body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data?.error || "Failed to change password.");
+  }
+  return data;
+};
+
+export const deleteAccount = async (password) => {
+  const response = await fetch(`${API_BASE}/api/auth/account`, {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json", ..._authHeaders() },
+    body: JSON.stringify({ password }),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data?.error || "Failed to delete account.");
+  }
+  return data;
+};
+
+
+const _getClientTimezone = () => {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || "";
+  } catch {
+    return "";
+  }
+};
+
+const _authHeaders = () => {
+  const token = localStorage.getItem('authToken');
+  const tz = _getClientTimezone();
+  return {
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...(tz ? { 'X-Timezone': tz } : {}),
+  };
+};
+
+export const getTimeAndDate = async (location = "") => {
+  const params = new URLSearchParams();
+  if (location) params.set("location", location);
+  const tz = _getClientTimezone();
+  if (tz) params.set("timezone", tz);
+
+  const response = await fetch(`${API_BASE}/api/time?${params.toString()}`, {
+    headers: _authHeaders(),
+  });
+  if (!response.ok) {
+    throw new Error("Failed to fetch time and date");
+  }
+  return response.json();
+};
+
+async function _consumeSSE(response, onEvent) {
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    onEvent({ type: 'error', content: err.error || `HTTP ${response.status}` });
+    return;
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop(); // keep incomplete line
+    for (const line of lines) {
+      if (line.startsWith('data: ')) {
+        try {
+          const event = JSON.parse(line.slice(6));
+          onEvent(event);
+        } catch (_) {}
+      }
+    }
+  }
+}
+
+/**
+ * Run the agentic loop with streaming SSE.
+ * onEvent(event) is called for each parsed SSE event:
+ *   { type: 'thought'|'tool_call'|'tool_result'|'confirm_required'|'done'|'error', content, tool?, args?, session_id?, preview? }
+ * Returns a controller with .abort() to cancel.
+ */
+export const runAgentStream = ({ task, mode = 'general', contextFiles = [], workingDir = null, onEvent }) => {
+  const controller = new AbortController();
+
+  (async () => {
+    try {
+      const response = await fetch(`${API_BASE}/api/agent/run`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ..._authHeaders() },
+        body: JSON.stringify({ task, mode, context_files: contextFiles, working_dir: workingDir }),
+        signal: controller.signal,
+      });
+      await _consumeSSE(response, onEvent);
+    } catch (err) {
+      if (err.name !== 'AbortError') {
+        onEvent({ type: 'error', content: err.message });
+      }
+    }
+  })();
+
+  return controller;
+};
+
+/**
+ * Resume a paused agent session after the user approves or rejects a
+ * mutating tool call. Same event shape and controller as runAgentStream.
+ */
+export const resumeAgentStream = ({ sessionId, decision, onEvent }) => {
+  const controller = new AbortController();
+
+  (async () => {
+    try {
+      const response = await fetch(`${API_BASE}/api/agent/resume`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ..._authHeaders() },
+        body: JSON.stringify({ session_id: sessionId, decision }),
+        signal: controller.signal,
+      });
+      await _consumeSSE(response, onEvent);
+    } catch (err) {
+      if (err.name !== 'AbortError') {
+        onEvent({ type: 'error', content: err.message });
+      }
+    }
+  })();
+
+  return controller;
+};
+
+/**
+ * Simple non-streaming agent chat (quick questions, no tool loop).
+ */
+export const agentChat = async ({ task, mode = 'general', history = [] }) => {
+  const response = await fetch(`${API_BASE}/api/agent/chat`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ..._authHeaders() },
+    body: JSON.stringify({ task, mode, history }),
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Agent error');
+  return data;
+};
+
+/**
+ * Get available agent modes from the backend.
+ */
+export const getAgentModes = async () => {
+  const response = await fetch(`${API_BASE}/api/agent/modes`, { headers: _authHeaders() });
+  const data = await response.json();
+  return data.modes || [];
+};
+
+// --- Memory API ---
+export const fetchMemories = async () => {
+  const response = await fetch(`${API_BASE}/api/memories`, { headers: _authHeaders() });
+  if (!response.ok) throw new Error("Failed to fetch memories");
+  return response.json();
+};
+
+export const deleteMemory = async (id) => {
+  const response = await fetch(`${API_BASE}/api/memories/${id}`, {
+    method: "DELETE",
+    headers: _authHeaders(),
+  });
+  if (!response.ok) throw new Error("Failed to delete memory");
+  return response.json();
+};
+
+export const syncMemories = async () => {
+  const response = await fetch(`${API_BASE}/api/memories/sync`, {
+    method: "POST",
+    headers: _authHeaders(),
+  });
+  if (!response.ok) throw new Error("Failed to sync memory store");
+  return response.json();
+};
+
+export const clearAllMemories = async () => {
+  const response = await fetch(`${API_BASE}/api/memories`, {
+    method: "DELETE",
+    headers: _authHeaders(),
+  });
+  if (!response.ok) throw new Error("Failed to clear memories");
+  return response.json();
+};
+
+// --- Skills API ---
+export const fetchSkills = async () => {
+  const response = await fetch(`${API_BASE}/api/skills`, { headers: _authHeaders() });
+  if (!response.ok) throw new Error("Failed to fetch skills");
+  const data = await response.json();
+  return data.skills || [];
+};
+
+export const createSkill = async ({ name, description, instructions }) => {
+  const response = await fetch(`${API_BASE}/api/skills`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ..._authHeaders() },
+    body: JSON.stringify({ name, description, instructions }),
+  });
+  if (!response.ok) throw new Error("Failed to create skill");
+  return response.json();
+};
+
+export const uploadSkill = async (file) => {
+  const formData = new FormData();
+  formData.append("file", file);
+  const token = localStorage.getItem("authToken");
+  const headers = token ? { Authorization: `Bearer ${token}` } : {};
+  const response = await fetch(`${API_BASE}/api/skills/upload`, {
+    method: "POST",
+    headers,
+    body: formData,
+  });
+  if (!response.ok) throw new Error("Failed to upload skill file");
+  return response.json();
+};
+
+export const reloadSkills = async () => {
+  const response = await fetch(`${API_BASE}/api/skills/reload`, {
+    method: "POST",
+    headers: _authHeaders(),
+  });
+  if (!response.ok) throw new Error("Failed to reload skills");
+  return response.json();
+};
+
+export const deleteSkill = async (name) => {
+  const response = await fetch(`${API_BASE}/api/skills/${encodeURIComponent(name)}`, {
+    method: "DELETE",
+    headers: _authHeaders(),
+  });
+  if (!response.ok) throw new Error("Failed to delete skill");
+  return response.json();
+};
+

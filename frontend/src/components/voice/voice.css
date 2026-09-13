@@ -1,0 +1,360 @@
+/* Voice Assistant Modal - ChatGPT Style */
+
+.pragna-voice-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  background: radial-gradient(circle at 50% 45%, rgba(20, 18, 12, 0.94) 0%, rgba(5, 5, 5, 0.98) 100%);
+  backdrop-filter: blur(28px);
+  -webkit-backdrop-filter: blur(28px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  padding: clamp(20px, 4vh, 48px) clamp(16px, 4vw, 40px);
+  box-sizing: border-box;
+  color: #fff;
+  font-family: var(--pragna-chat-font, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif);
+  animation: voiceFadeIn 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+  overflow: hidden;
+  user-select: none;
+}
+
+@keyframes voiceFadeIn {
+  from {
+    opacity: 0;
+    transform: scale(1.02);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Header bar */
+.pragna-voice-header {
+  width: 100%;
+  max-width: 720px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  z-index: 10;
+}
+
+.pragna-voice-status-pill {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: rgba(212, 175, 55, 0.1);
+  border: 1px solid rgba(212, 175, 55, 0.25);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  color: var(--pragna-gold, #d4af37);
+  box-shadow: 0 0 16px rgba(212, 175, 55, 0.15);
+}
+
+.pragna-voice-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--pragna-gold, #d4af37);
+}
+
+.pragna-voice-dot.listening {
+  background: #38bdf8;
+  box-shadow: 0 0 10px #38bdf8;
+  animation: pulseDot 1.4s infinite;
+}
+
+.pragna-voice-dot.thinking {
+  background: #f59e0b;
+  box-shadow: 0 0 10px #f59e0b;
+  animation: pulseDot 0.8s infinite;
+}
+
+.pragna-voice-dot.speaking {
+  background: #10b981;
+  box-shadow: 0 0 10px #10b981;
+  animation: pulseDot 1.2s infinite;
+}
+
+@keyframes pulseDot {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.4);
+    opacity: 0.6;
+  }
+}
+
+.pragna-voice-close-btn {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: #e5e5e5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.pragna-voice-close-btn:hover {
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
+  transform: scale(1.05);
+}
+
+/* Center stage & Interactive Orb */
+.pragna-voice-stage {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  max-width: 600px;
+  flex: 1;
+  margin: 20px 0;
+}
+
+.pragna-voice-orb-container {
+  position: relative;
+  width: clamp(220px, 35vw, 320px);
+  height: clamp(220px, 35vw, 320px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.pragna-voice-orb-canvas {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  pointer-events: auto;
+  filter: drop-shadow(0 0 35px rgba(212, 175, 55, 0.35));
+  transition: transform 0.25s ease;
+}
+
+.pragna-voice-orb-container:hover .pragna-voice-orb-canvas {
+  transform: scale(1.04);
+}
+
+.pragna-voice-orb-container:active .pragna-voice-orb-canvas {
+  transform: scale(0.97);
+}
+
+/* Ambient glow ring behind orb */
+.pragna-voice-glow-ring {
+  position: absolute;
+  inset: -20px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(212, 175, 55, 0.22) 0%, rgba(212, 175, 55, 0) 70%);
+  pointer-events: none;
+  animation: ambientFloat 6s ease-in-out infinite;
+}
+
+@keyframes ambientFloat {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 0.6;
+  }
+  50% {
+    transform: scale(1.15);
+    opacity: 0.9;
+  }
+}
+
+/* Live transcript subtitles */
+.pragna-voice-transcript-box {
+  margin-top: 24px;
+  width: 100%;
+  min-height: 72px;
+  max-height: 160px;
+  overflow-y: auto;
+  text-align: center;
+  padding: 0 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.pragna-voice-transcript-user {
+  font-size: clamp(14px, 2vw, 17px);
+  color: #94a3b8;
+  font-weight: 500;
+  margin-bottom: 6px;
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+.pragna-voice-transcript-ai {
+  font-size: clamp(16px, 2.4vw, 20px);
+  color: #fef08a;
+  font-weight: 600;
+  line-height: 1.5;
+  text-shadow: 0 0 12px rgba(212, 175, 55, 0.3);
+  word-break: break-word;
+}
+
+.pragna-voice-hint {
+  font-size: 13px;
+  color: #64748b;
+  margin-top: 8px;
+  font-weight: 400;
+  letter-spacing: 0.2px;
+}
+
+/* Bottom Controls */
+.pragna-voice-controls {
+  width: 100%;
+  max-width: 520px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(16px, 4vw, 32px);
+  z-index: 10;
+  padding-bottom: 8px;
+}
+
+.pragna-voice-btn {
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+  color: #f1f5f9;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+}
+
+.pragna-voice-btn:hover {
+  background: rgba(255, 255, 255, 0.14);
+  transform: translateY(-2px);
+  color: #fff;
+}
+
+.pragna-voice-btn:active {
+  transform: translateY(1px);
+}
+
+.pragna-voice-btn.active {
+  background: rgba(212, 175, 55, 0.2);
+  border-color: rgba(212, 175, 55, 0.5);
+  color: var(--pragna-gold, #d4af37);
+  box-shadow: 0 0 20px rgba(212, 175, 55, 0.25);
+}
+
+.pragna-voice-btn.danger {
+  background: rgba(239, 68, 68, 0.2);
+  border-color: rgba(239, 68, 68, 0.4);
+  color: #f87171;
+}
+
+.pragna-voice-btn.danger:hover {
+  background: rgba(239, 68, 68, 0.3);
+  color: #fca5a5;
+}
+
+.pragna-voice-interrupt-pill {
+  padding: 8px 18px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  font-size: 13px;
+  color: #cbd5e1;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pragna-voice-interrupt-pill:hover {
+  background: rgba(255, 255, 255, 0.15);
+  color: #fff;
+  border-color: rgba(212, 175, 55, 0.4);
+}
+
+/* Mobile Responsiveness for Voice Assistant Modal */
+@media (max-width: 640px) {
+  .pragna-voice-overlay {
+    padding: max(16px, env(safe-area-inset-top, 16px)) 16px max(24px, env(safe-area-inset-bottom, 24px)) 16px;
+    height: 100dvh;
+  }
+
+  .pragna-voice-stage {
+    margin: 8px 0;
+  }
+
+  .pragna-voice-orb-container {
+    width: clamp(160px, 48vw, 220px);
+    height: clamp(160px, 48vw, 220px);
+  }
+
+  .pragna-voice-transcript-box {
+    max-height: 110px;
+    padding: 10px 14px;
+    margin-bottom: 10px;
+  }
+
+  .pragna-voice-transcript-text {
+    font-size: 14.5px;
+    line-height: 1.45;
+  }
+
+  .pragna-voice-controls {
+    gap: 12px;
+    margin-top: 6px;
+  }
+
+  .pragna-voice-btn {
+    width: 48px;
+    height: 48px;
+  }
+
+  .pragna-voice-btn.danger {
+    width: 52px;
+    height: 52px;
+  }
+
+  .pragna-voice-status-pill {
+    padding: 5px 12px;
+    font-size: 12px;
+  }
+
+  .pragna-voice-close-btn {
+    width: 36px;
+    height: 36px;
+  }
+}
+
+@media (max-width: 380px) {
+  .pragna-voice-orb-container {
+    width: clamp(140px, 44vw, 180px);
+    height: clamp(140px, 44vw, 180px);
+  }
+
+  .pragna-voice-btn {
+    width: 44px;
+    height: 44px;
+  }
+
+  .pragna-voice-btn.danger {
+    width: 48px;
+    height: 48px;
+  }
+}

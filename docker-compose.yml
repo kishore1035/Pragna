@@ -1,0 +1,43 @@
+services:
+  # Backend Service (FastAPI Engine)
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: pragna-backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - OLLAMA_URL=http://host.docker.internal:11434
+      - CHAT_MODEL=gemma4:cloud
+      - EMBED_MODEL=nomic-embed-text
+      - RAG_SIMILARITY_THRESHOLD=0.5
+      - DB_PATH=${DB_PATH:-/app/data/argus.db}
+      - CHROMA_PATH=/app/data/chroma_db
+      - DOCUMENTS_DIR=/app/data/documents
+      - JWT_SECRET=${JWT_SECRET:-6e2acf507b8c71a14cae72d13677ac93a747cc2d97d0188ca7c9999d9de95235}
+      - STABILITY_API_KEY=${STABILITY_API_KEY:-}
+      - BRAVE_SEARCH_API_KEY=${BRAVE_SEARCH_API_KEY:-}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
+      - GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID:-}
+      - GITHUB_CLIENT_SECRET=${GITHUB_CLIENT_SECRET:-}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./backend/data:/app/data
+
+  # Frontend Service (Vite + React with Pragna UI)
+  frontend:
+    build:
+      context: ./chatbot-ui-vite
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:8000}
+    container_name: pragna-frontend
+    restart: unless-stopped
+    ports:
+      - "5180:5180"
+    depends_on:
+      - backend

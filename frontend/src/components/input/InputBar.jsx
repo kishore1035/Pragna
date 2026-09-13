@@ -1,0 +1,1206 @@
+import { useContext, useState, useRef, useCallback, useEffect } from "react";
+import { ChatContext } from "../../context/ChatContext";
+import { generateAIImage, generateDocument, sendOrchestratedMessage, sendOrchestratedMessageStream, sendOrchestratedUploadMessage, summarizeChat } from "../../api/api";
+import { normalizeLanguageCode, SUPPORTED_LANGUAGE_OPTIONS } from "../../utils/language";
+import LanguageSelector from "./LanguageSelector";
+import { useMediaQuery } from "../../pragna/hooks/useMediaQuery";
+import {
+  PlusIcon,
+  MicIcon,
+  MicOffIcon,
+  SendIcon,
+  StopIcon,
+  ThinkIcon,
+  FileTextIcon,
+  CloseIcon,
+  SoundwaveIcon,
+} from "../icons/PragnaIcon";
+
+// BCP-47 tags for SpeechRecognition
+const LANG_TAG = {
+  en: "en-US", hi: "hi-IN", kn: "kn-IN", te: "te-IN",
+  ta: "ta-IN", ml: "ml-IN", mr: "mr-IN", bn: "bn-IN",
+  gu: "gu-IN", pa: "pa-IN", ur: "ur-PK",
+};
+
+const IMAGE_REQUEST_RE = /(create|generate|make|design)\s+(an?\s+)?(ai\s+)?image|image\s+of|illustration\s+of|poster\s+of|logo\s+of/i;
+
+const extractImagePrompt = (text) => {
+  const raw = (text || "").trim();
+  if (!raw) return "";
+  return raw
+    .replace(/^(please\s+)?(create|generate|make|design)\s+(an?\s+)?(ai\s+)?(image|picture|photo|illustration)\s+(of|for)?\s*/i, "")
+    .trim() || raw;
+};
+
+const DOCUMENT_VERB_RE = /\b(create|generate|make|write|draft|build|export|give\s+me)\b.*\b(word(\s*(doc(ument)?|file))?|\bdocx\b|\bdoc(ument)?\b|report|excel(\s*(sheet|spreadsheet|file))?|spreadsheet|\bxlsx\b|\bpdf(\s*file)?\b|power\s*point(\s*(presentation|deck|file|slides?))?|presentation|slides?|\bpptx\b)\b/i;
+
+const DOCUMENT_FORMAT_PATTERNS = [
+  { format: "pptx", re: /power\s*point|presentation|slides?|\bpptx\b/i },
+  { format: "xlsx", re: /excel|spreadsheet|sheet|\bxlsx\b/i },
+  { format: "pdf", re: /\bpdf\b/i },
+  { format: "docx", re: /word(\s*(doc(ument)?|file))?|\bdoc(ument)?\b|\bdocx\b|report/i },
+];
+
+const extractDocumentRequest = (text) => {
+  const raw = (text || "").trim();
+  if (!raw || !DOCUMENT_VERB_RE.test(raw)) return null;
+  const match = DOCUMENT_FORMAT_PATTERNS.find((p) => p.re.test(raw));
+  if (!match) return null;
+  const subject = raw
+    .replace(/^(please\s+)?(create|generate|make|write|draft|build|export|give\s+me)\s+(me\s+)?(an?\s+)?(ms\s*)?((word(\s*(doc(ument)?|file))?|\bdocx\b|\bdoc(ument)?\b|excel(\s*(sheet|spreadsheet|file))?|spreadsheet|\bxlsx\b|pdf(\s*file)?|power\s*point(\s*(presentation|deck|file))?|presentation|slides?|\bpptx\b|report))\s*(about|on|for|regarding|with|containing|and|to|,)?\s*/i, "")
+    .trim() || raw;
+  return { format: match.format, subject };
+};
+
+const SLASH_COMMANDS = [
+  { name: "summarize", usage: "/summarize", description: "Summarize this conversation" },
+  { name: "mode", usage: "/mode <general|explain|ideas|write|code|questions|story>", description: "Switch chat mode" },
+  { name: "lang", usage: "/lang <code>", description: "Switch response language" },
+  { name: "clear", usage: "/clear", description: "Start a new chat" },
+  { name: "image", usage: "/image <prompt>", description: "Generate an image" },
+  { name: "doc", usage: "/doc <docx|xlsx|pdf|pptx> <prompt>", description: "Generate a document" },
+  { name: "persona", usage: "/persona <name>", description: "Switch active persona" },
+];
+
+const MODE_COMMAND_MAP = {
+  general: "general",
+  explain: "explain_concepts",
+  ideas: "generate_ideas",
+  write: "write_content",
+  code: "code_assistance",
+  questions: "ask_questions",
+  story: "creative_writing",
+};
+
+// Generate smart title from user input and AI response
+const generateChatTitle = (userMessage, aiResponse) => {
+  if (!userMessage && !aiResponse) return "New Chat";
+  const combined = (userMessage + " " + aiResponse).toLowerCase();
+  let cleaned = combined.replace(/[^\w\s]/g, " ").replace(/\s+/g, " ").trim();
+  const stopWords = new Set([
+    'the', 'a', 'an', 'is', 'are', 'was', 'were', 'be', 'been', 'being',
+    'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could',
+    'should', 'may', 'might', 'must', 'can', 'and', 'or', 'but', 'in', 'on',
+    'at', 'to', 'from', 'for', 'of', 'with', 'by', 'it', 'you', 'i', 'that',
+    'this', 'your', 'my', 'we', 'they', 'them', 'their', 'what', 'which',
+    'when', 'where', 'why', 'how', 'if', 'as', 'just', 'so', 'than'
+  ]);
+  const words = cleaned
+    .split(" ")
+    .filter(w => w && !stopWords.has(w) && w.length > 2);
+  const title = words.slice(0, 5).join(" ");
+  if (!title || title.length < 3) {
+    return userMessage.slice(0, 40).replace(/[^\w\s]/g, " ").trim() || "New Chat";
+  }
+  return title.charAt(0).toUpperCase() + title.slice(1);
+};
+
+export default function InputBar() {
+  const [text, setText] = useState("");
+  const [recording, setRecording] = useState(false);
+  const [attachMenuOpen, setAttachMenuOpen] = useState(false);
+  const [attachments, setAttachments] = useState([]);
+  const [inputFocused, setInputFocused] = useState(false);
+
+  const recognitionRef = useRef(null);
+  const attachMenuRef = useRef(null);
+  const imageInputRef = useRef(null);
+  const videoInputRef = useRef(null);
+  const fileInputRef = useRef(null);
+  const folderInputRef = useRef(null);
+
+  const {
+    chats, setChats, activeChatId, setActiveChatId,
+    language, isLoading, setIsLoading, chatMode, setChatMode, inputRef,
+    personas, activePersonaId, setActivePersonaId,
+    newChat, setLanguage, abortControllerRef, stopGeneration, openArtifact,
+    extendedThinking, toggleExtendedThinking,
+    setIsVoiceAssistantOpen,
+  } = useContext(ChatContext);
+
+
+
+  const isMobile = useMediaQuery("(max-width: 640px)");
+  const activeChat = chats.find((c) => c.id === activeChatId);
+
+  // Update chat title when it's still "New chat" (after first response)
+  useEffect(() => {
+    const chat = chats.find(c => c.title === "New chat" && c.messages.length > 1);
+    if (chat) {
+      const userMsg = chat.messages.find(m => m.sender === "user")?.text || "";
+      const botMsg = chat.messages.find(m => m.sender === "bot")?.text || "";
+      
+      if (userMsg && botMsg) {
+        const summary = generateChatTitle(userMsg, botMsg);
+        if (summary !== "New chat") {
+          setChats(prev => prev.map(c => 
+            c.id === chat.id ? { ...c, title: summary } : c
+          ));
+        }
+      }
+    }
+  }, [chats, setChats]);
+
+  // Close attachment menu on outside click
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (attachMenuRef.current && !attachMenuRef.current.contains(e.target)) {
+        setAttachMenuOpen(false);
+      }
+    };
+    if (attachMenuOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [attachMenuOpen]);
+
+  // Auto-resize textarea dynamically based on input length
+  useEffect(() => {
+    const el = inputRef?.current;
+    if (!el) return;
+    el.style.height = "auto";
+    const singleLineHeight = 36;
+    const maxHeight = 180;
+    if (!text) {
+      el.style.height = `${singleLineHeight}px`;
+      el.style.overflowY = "hidden";
+    } else {
+      const scrollHeight = el.scrollHeight;
+      const targetHeight = Math.min(Math.max(scrollHeight, singleLineHeight), maxHeight);
+      el.style.height = `${targetHeight}px`;
+      el.style.overflowY = scrollHeight > maxHeight ? "auto" : "hidden";
+    }
+  }, [text, inputRef]);
+
+  // Handle file picked from any input
+  const handleFilePick = (e, type) => {
+    const files = Array.from(e.target.files);
+    if (!files.length) return;
+    const newAttachments = files.map((file) => ({
+      file,
+      type,
+      name: type === "folder" ? (file.webkitRelativePath || file.name) : file.name,
+      relativePath: file.webkitRelativePath || file.name,
+      previewUrl: (type === "image" || type === "video") && !file.webkitRelativePath
+        ? URL.createObjectURL(file)
+        : null,
+    }));
+    setAttachments((prev) => [...prev, ...newAttachments]);
+    setAttachMenuOpen(false);
+    e.target.value = "";
+  };
+
+  const removeAttachment = (index) => {
+    setAttachments((prev) => {
+      const updated = [...prev];
+      if (updated[index].previewUrl) {
+        URL.revokeObjectURL(updated[index].previewUrl);
+      }
+      updated.splice(index, 1);
+      return updated;
+    });
+  };
+
+  // Handle pasting images or videos directly into the request bar
+  const handlePaste = (e) => {
+    const clipboardItems = e.clipboardData?.items || [];
+    const mediaFiles = [];
+
+    for (let i = 0; i < clipboardItems.length; i++) {
+      const item = clipboardItems[i];
+      if (item.type.startsWith("image/")) {
+        const file = item.getAsFile();
+        if (file) {
+          mediaFiles.push({
+            file,
+            type: "image",
+            name: file.name || `pasted_image_${Date.now()}.png`,
+            relativePath: file.name || `pasted_image_${Date.now()}.png`,
+            previewUrl: URL.createObjectURL(file),
+          });
+        }
+      } else if (item.type.startsWith("video/")) {
+        const file = item.getAsFile();
+        if (file) {
+          mediaFiles.push({
+            file,
+            type: "video",
+            name: file.name || `pasted_video_${Date.now()}.mp4`,
+            relativePath: file.name || `pasted_video_${Date.now()}.mp4`,
+            previewUrl: URL.createObjectURL(file),
+          });
+        }
+      }
+    }
+
+    if (mediaFiles.length > 0) {
+      setAttachments((prev) => [...prev, ...mediaFiles]);
+    }
+  };
+
+
+  const handleSlashCommand = useCallback(async (rawText) => {
+    const withoutSlash = rawText.slice(1);
+    const spaceIdx = withoutSlash.indexOf(" ");
+    const commandName = (spaceIdx === -1 ? withoutSlash : withoutSlash.slice(0, spaceIdx)).toLowerCase();
+    const arg = (spaceIdx === -1 ? "" : withoutSlash.slice(spaceIdx + 1)).trim();
+
+    let targetChatId = activeChatId;
+    let currentChat = activeChat;
+    if (!targetChatId || !currentChat) {
+      const newId = Date.now().toString();
+      const newChatObj = { id: newId, title: "New chat", messages: [] };
+      setChats((prev) => [newChatObj, ...prev]);
+      setActiveChatId(newId);
+      targetChatId = newId;
+      currentChat = newChatObj;
+    }
+
+    const appendBotMessage = (botText, isError = false) => {
+      setChats((prev) =>
+        prev.map((c) =>
+          c.id === targetChatId
+            ? {
+                ...c,
+                messages: [
+                  ...c.messages,
+                  { sender: "user", text: rawText, attachments: [] },
+                  { sender: "bot", text: botText, error: isError },
+                ],
+              }
+            : c
+        )
+      );
+    };
+
+    const command = SLASH_COMMANDS.find((cmd) => cmd.name === commandName);
+    if (!command) {
+      appendBotMessage(
+        `Unknown command "/${commandName}". Available commands: ${SLASH_COMMANDS.map((c) => c.usage).join(", ")}`,
+        true
+      );
+      return;
+    }
+
+    if (commandName === "summarize") {
+      setIsLoading(true);
+      try {
+        const { summary } = await summarizeChat(currentChat.messages, language);
+        appendBotMessage(summary);
+      } catch {
+        appendBotMessage("Failed to summarize this conversation. Please try again.", true);
+      } finally {
+        setIsLoading(false);
+      }
+      return;
+    }
+
+    if (commandName === "mode") {
+      const modeKey = MODE_COMMAND_MAP[arg.toLowerCase()];
+      if (!modeKey) {
+        appendBotMessage(`Unknown mode "${arg}". Use one of: ${Object.keys(MODE_COMMAND_MAP).join(", ")}`, true);
+        return;
+      }
+      setChatMode(modeKey);
+      appendBotMessage(`Switched to ${arg.toLowerCase()} mode.`);
+      return;
+    }
+
+    if (commandName === "lang") {
+      const langOption = SUPPORTED_LANGUAGE_OPTIONS.find(
+        (o) => o.code === arg.toLowerCase() || o.label.toLowerCase() === arg.toLowerCase()
+      );
+      if (!langOption) {
+        appendBotMessage(
+          `Unknown language "${arg}". Use one of: ${SUPPORTED_LANGUAGE_OPTIONS.map((o) => o.code).join(", ")}`,
+          true
+        );
+        return;
+      }
+      setLanguage(langOption.code);
+      appendBotMessage(`Switched response language to ${langOption.label}.`);
+      return;
+    }
+
+    if (commandName === "clear") {
+      newChat();
+      return;
+    }
+
+    if (commandName === "image") {
+      if (!arg) {
+        appendBotMessage("Usage: /image <prompt>", true);
+        return;
+      }
+      setIsLoading(true);
+      try {
+        const imageResult = await generateAIImage({ prompt: arg, style: "cinematic", quality: "hd", size: "1024x1024" });
+        setChats((prev) =>
+          prev.map((c) =>
+            c.id === targetChatId
+              ? {
+                  ...c,
+                  messages: [
+                    ...c.messages,
+                    { sender: "user", text: rawText, attachments: [] },
+                    {
+                      sender: "bot",
+                      text: "Generated image ready.",
+                      attachments: [{ name: `generated-${Date.now()}.png`, type: "image", previewUrl: imageResult.image }],
+                    },
+                  ],
+                }
+              : c
+          )
+        );
+      } catch {
+        appendBotMessage("Image generation failed. Please try again.", true);
+      } finally {
+        setIsLoading(false);
+      }
+      return;
+    }
+
+    if (commandName === "doc") {
+      const docSpaceIdx = arg.indexOf(" ");
+      const format = (docSpaceIdx === -1 ? arg : arg.slice(0, docSpaceIdx)).toLowerCase();
+      const prompt = (docSpaceIdx === -1 ? "" : arg.slice(docSpaceIdx + 1)).trim();
+      if (!["docx", "xlsx", "pdf", "pptx"].includes(format) || !prompt) {
+        appendBotMessage("Usage: /doc <docx|xlsx|pdf|pptx> <prompt>", true);
+        return;
+      }
+      setIsLoading(true);
+      try {
+        const docResult = await generateDocument({ format, prompt, language: normalizeLanguageCode(language) });
+        openArtifact?.({
+          id: `doc-${Date.now()}`,
+          title: docResult.title || docResult.filename || `${prompt}.${format}`,
+          type: format === 'pdf' ? 'pdf' : 'document',
+          format,
+          downloadUrl: docResult.download_url,
+          content: docResult.content || `# ${docResult.filename || 'Generated Document'}\n\nDocument ready for preview and download.`,
+        });
+        setChats((prev) =>
+          prev.map((c) =>
+            c.id === targetChatId
+              ? {
+                  ...c,
+                  messages: [
+                    ...c.messages,
+                    { sender: "user", text: rawText, attachments: [] },
+                    {
+                      sender: "bot",
+                      text: "Generated document ready.",
+                      attachments: [{ name: docResult.filename, type: "document", downloadUrl: docResult.download_url, format, content: docResult.content, title: docResult.title }],
+                    },
+                  ],
+                }
+              : c
+          )
+        );
+      } catch {
+        appendBotMessage("Document generation failed. Please try again.", true);
+      } finally {
+        setIsLoading(false);
+      }
+      return;
+    }
+
+    if (commandName === "persona") {
+      if (!arg) {
+        appendBotMessage("Usage: /persona <name>", true);
+        return;
+      }
+      const match = personas.find((p) => p.name.toLowerCase() === arg.toLowerCase());
+      if (!match) {
+        const available = personas.length ? personas.map((p) => p.name).join(", ") : "none saved yet";
+        appendBotMessage(`No persona named "${arg}". Available personas: ${available}`, true);
+        return;
+      }
+      setActivePersonaId(match.id);
+      appendBotMessage(`Switched to persona "${match.name}".`);
+      return;
+    }
+  }, [activeChatId, activeChat, language, personas, setChats, setActiveChatId, setIsLoading, setChatMode, setLanguage, newChat, setActivePersonaId]);
+
+  const handleSendMessage = useCallback(async (msgText, msgAttachments = []) => {
+    const hasContent = msgText.trim() || msgAttachments.length > 0;
+    if (!hasContent || isLoading) return;
+
+    const trimmedText = msgText.trim();
+    if (trimmedText.startsWith("/") && msgAttachments.length === 0) {
+      await handleSlashCommand(trimmedText);
+      return;
+    }
+
+    let fullText = msgText.trim();
+    if (msgAttachments.length > 0) {
+      const fileNames = msgAttachments.map((a) => a.relativePath || a.name).join(", ");
+      fullText = fullText
+        ? `${fullText}\n[Attached: ${fileNames}]`
+        : `[Attached: ${fileNames}]`;
+    }
+
+    let targetChatId = activeChatId;
+    let currentChat = activeChat;
+
+    if (!targetChatId || !currentChat) {
+      const newId = Date.now().toString();
+      const newChatObj = {
+        id: newId,
+        title: "New chat",
+        messages: [],
+      };
+      setChats((prev) => [newChatObj, ...prev]);
+      setActiveChatId(newId);
+      targetChatId = newId;
+      currentChat = newChatObj;
+    }
+
+    const attachmentMeta = msgAttachments.map((a) => ({
+      name: a.name,
+      type: a.type,
+      relativePath: a.relativePath,
+      previewUrl: a.previewUrl,
+    }));
+
+    const updatedMessages = [
+      ...currentChat.messages,
+      { sender: "user", text: msgText.trim(), attachments: attachmentMeta },
+    ];
+    const botMsg = { sender: "bot", text: "", isStreaming: true };
+
+    setChats((prev) =>
+      prev.map((c) =>
+        c.id === targetChatId ? { ...c, messages: [...updatedMessages, botMsg] } : c
+      )
+    );
+    setIsLoading(true);
+
+    try {
+      const normalizedLanguage = normalizeLanguageCode(language);
+
+      const docRequest = msgAttachments.length === 0 ? extractDocumentRequest(msgText) : null;
+      if (docRequest) {
+        const docResult = await generateDocument({
+          format: docRequest.format,
+          prompt: docRequest.subject,
+          language: normalizedLanguage,
+        });
+
+        setIsLoading(false);
+        openArtifact?.({
+          id: `doc-${Date.now()}`,
+          title: docResult.title || docResult.filename || `${docRequest.subject}.${docRequest.format}`,
+          type: docRequest.format === 'pdf' ? 'pdf' : 'document',
+          format: docRequest.format,
+          downloadUrl: docResult.download_url,
+          content: docResult.content || `# ${docResult.filename || 'Generated Document'}\n\nDocument ready for preview and download.`,
+        });
+        setChats((prev) =>
+          prev.map((c) =>
+            c.id === targetChatId
+              ? {
+                  ...c,
+                  messages: c.messages.map((m, idx) =>
+                    idx === c.messages.length - 1
+                      ? {
+                          ...m,
+                          text: "Generated document ready.",
+                          isStreaming: false,
+                          attachments: [
+                            {
+                              name: docResult.filename,
+                              type: "document",
+                              downloadUrl: docResult.download_url,
+                              format: docRequest.format,
+                              content: docResult.content,
+                              title: docResult.title,
+                            },
+                          ],
+                        }
+                      : m
+                  ),
+                }
+              : c
+          )
+        );
+        return;
+      }
+
+      const isImageRequest = IMAGE_REQUEST_RE.test(msgText) && msgAttachments.length === 0;
+
+      if (isImageRequest) {
+        const imagePrompt = extractImagePrompt(msgText);
+        const imageResult = await generateAIImage({
+          prompt: imagePrompt,
+          style: "cinematic",
+          quality: "hd",
+          size: "1024x1024",
+        });
+
+        setIsLoading(false);
+        setChats((prev) =>
+          prev.map((c) =>
+            c.id === targetChatId
+              ? {
+                  ...c,
+                  messages: c.messages.map((m, idx) =>
+                    idx === c.messages.length - 1
+                      ? {
+                          ...m,
+                          text: "Generated image ready.",
+                          isStreaming: false,
+                          attachments: [
+                            {
+                              name: `generated-${Date.now()}.png`,
+                              type: "image",
+                              previewUrl: imageResult.image,
+                            },
+                          ],
+                        }
+                      : m
+                  ),
+                }
+              : c
+          )
+        );
+        return;
+      }
+
+      if (msgAttachments.length > 0) {
+        let data;
+        try {
+          data = await sendOrchestratedUploadMessage(
+            msgText.trim(),
+            normalizedLanguage,
+            targetChatId,
+            chatMode,
+            msgAttachments,
+            extendedThinking
+          );
+        } catch (uploadErr) {
+          console.warn("Upload analysis endpoint failed, falling back to text-only orchestrator:", uploadErr);
+          const fallbackText = `${fullText}\n[Note: Attachment parsing endpoint unavailable.]`;
+          data = await sendOrchestratedMessage(fallbackText, normalizedLanguage, targetChatId, chatMode, extendedThinking);
+        }
+        setIsLoading(false);
+
+        if (data && data.response) {
+          const responseText = data.response;
+          const sources = data.web_search_sources || [];
+          const thinking = data.thinking;
+
+          setChats((prev) =>
+            prev.map((c) =>
+              c.id === targetChatId
+                ? {
+                    ...c,
+                    messages: c.messages.map((m, idx) =>
+                      idx === c.messages.length - 1
+                        ? { ...m, text: responseText, isStreaming: false, sources, thinking }
+                        : m
+                    ),
+                  }
+                : c
+            )
+          );
+        } else {
+          throw new Error("Invalid response from server");
+        }
+      } else {
+        const activePersona = personas.find((p) => p.id === activePersonaId);
+
+        let sawResponse = false;
+        const controller = new AbortController();
+        if (abortControllerRef) {
+          abortControllerRef.current = controller;
+        }
+
+        let accumulated = "";
+        try {
+          await sendOrchestratedMessageStream({
+            text: fullText,
+            language: normalizedLanguage,
+            user_id: targetChatId,
+            chatMode,
+            personaSystemPrompt: activePersona?.system_prompt,
+            extendedThinking,
+            signal: controller.signal,
+            onThinking: (thinking) => {
+              setChats((prev) =>
+                prev.map((c) =>
+                  c.id === targetChatId
+                    ? {
+                        ...c,
+                        messages: c.messages.map((m, idx) =>
+                          idx === c.messages.length - 1 ? { ...m, thinking } : m
+                        ),
+                      }
+                    : c
+                )
+              );
+            },
+            onChunk: (chunk) => {
+              sawResponse = true;
+              accumulated += chunk;
+              setChats((prev) =>
+                prev.map((c) =>
+                  c.id === targetChatId
+                    ? {
+                        ...c,
+                        messages: c.messages.map((m, idx) =>
+                          idx === c.messages.length - 1 ? { ...m, text: (m.text || "") + chunk } : m
+                        ),
+                      }
+                    : c
+                )
+              );
+            },
+            onSources: (sources) => {
+              setChats((prev) =>
+                prev.map((c) =>
+                  c.id === targetChatId
+                    ? {
+                        ...c,
+                        messages: c.messages.map((m, idx) =>
+                          idx === c.messages.length - 1 ? { ...m, sources } : m
+                        ),
+                      }
+                    : c
+                )
+              );
+            },
+            onArtifact: (artifact) => {
+              openArtifact?.(artifact);
+              setChats((prev) =>
+                prev.map((c) =>
+                  c.id === targetChatId
+                    ? {
+                        ...c,
+                        messages: c.messages.map((m, idx) =>
+                          idx === c.messages.length - 1 ? { ...m, artifact } : m
+                        ),
+                      }
+                    : c
+                )
+              );
+            },
+
+            onDone: () => {
+              setIsLoading(false);
+
+              // Auto-detect artifacts if present in markdown output
+              const antMatch = accumulated.match(/<(?:antArtifact|artifact)\s+([^>]*?)>([\s\S]*?)<\/(?:antArtifact|artifact)>/i);
+              if (antMatch) {
+                const attrs = antMatch[1];
+                const content = antMatch[2];
+                const titleMatch = attrs.match(/title=["']([^"']+)["']/i);
+                const typeMatch = attrs.match(/type=["']([^"']+)["']/i);
+                const langMatch = attrs.match(/language=["']([^"']+)["']/i);
+                const title = titleMatch ? titleMatch[1] : "Interactive Artifact";
+                const type = typeMatch ? typeMatch[1] : (langMatch ? langMatch[1] : "html");
+                openArtifact?.({ title, type, content: content.trim() });
+              }
+
+              setChats((prev) =>
+                prev.map((c) =>
+                  c.id === targetChatId
+                    ? {
+                        ...c,
+                        messages: c.messages.map((m, idx) =>
+                          idx === c.messages.length - 1 ? { ...m, isStreaming: false } : m
+                        ),
+                      }
+                    : c
+                )
+              );
+            },
+          });
+        } finally {
+          if (abortControllerRef && abortControllerRef.current === controller) {
+            abortControllerRef.current = null;
+          }
+        }
+
+        if (!sawResponse && !controller.signal.aborted) {
+          throw new Error("Invalid response from server");
+        }
+      }
+    } catch (err) {
+      if (err.name === "AbortError" || err.message?.includes("aborted")) {
+        console.log("Stream generation stopped by user.");
+        setIsLoading(false);
+        setChats((prev) =>
+          prev.map((c) =>
+            c.id === targetChatId
+              ? {
+                  ...c,
+                  messages: c.messages.map((m, idx) =>
+                    idx === c.messages.length - 1 ? { ...m, isStreaming: false } : m
+                  ),
+                }
+              : c
+          )
+        );
+        return;
+      }
+      console.error("API error:", err);
+      setIsLoading(false);
+
+
+      const errorMessage = "Server error. Please try again.";
+      setChats((prev) =>
+        prev.map((c) =>
+          c.id === targetChatId
+            ? {
+                ...c,
+                messages: c.messages.map((m, idx) =>
+                  idx === c.messages.length - 1
+                    ? {
+                        ...m,
+                        text: errorMessage,
+                        isStreaming: false,
+                        error: true,
+                      }
+                    : m
+                ),
+              }
+            : c
+        )
+      );
+    }
+  }, [activeChatId, activeChat, chats, isLoading, language, setChats, setActiveChatId, setIsLoading, personas, activePersonaId, handleSlashCommand]);
+
+  const hasContent = text.trim() || attachments.length > 0;
+
+  const send = () => {
+    if (!hasContent || isLoading) return;
+    handleSendMessage(text, attachments);
+    setText("");
+    setAttachments([]);
+  };
+
+  const toggleMic = () => {
+    if (recording) {
+      recognitionRef.current?.stop();
+      setRecording(false);
+      return;
+    }
+
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+    if (!SpeechRecognition) {
+      alert("Your browser doesn't support voice input. Please use Chrome.");
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+    const normalizedLanguage = normalizeLanguageCode(language);
+    recognition.lang = LANG_TAG[normalizedLanguage] || "en-US";
+    recognition.interimResults = true;
+    recognition.continuous = false;
+    recognition.maxAlternatives = 1;
+
+    let finalTranscript = "";
+
+    recognition.onstart = () => setRecording(true);
+
+    recognition.onresult = (event) => {
+      let interim = "";
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const t = event.results[i][0].transcript;
+        if (event.results[i].isFinal) {
+          finalTranscript += t;
+        } else {
+          interim += t;
+        }
+      }
+      setText(finalTranscript + interim);
+    };
+
+    recognition.onend = () => {
+      setRecording(false);
+      recognitionRef.current = null;
+      if (finalTranscript.trim()) {
+        handleSendMessage(finalTranscript.trim(), attachments);
+        setText("");
+        setAttachments([]);
+      }
+    };
+
+    recognition.onerror = (e) => {
+      console.error("SpeechRecognition error:", e.error);
+      setRecording(false);
+      recognitionRef.current = null;
+      if (e.error === "not-allowed") {
+        alert("Microphone access denied. Please allow microphone access in your browser.");
+      }
+    };
+
+    recognitionRef.current = recognition;
+    recognition.start();
+  };
+
+  const inputBorder = inputFocused ? 'rgba(212,175,55,0.45)' : 'rgba(212,175,55,0.18)';
+
+  const slashQuery = text.startsWith("/") && !text.includes(" ") ? text.slice(1).toLowerCase() : null;
+  const slashMatches = slashQuery !== null
+    ? SLASH_COMMANDS.filter((cmd) => cmd.name.startsWith(slashQuery))
+    : [];
+
+  return (
+    <div style={{ padding: isMobile ? '8px 10px max(12px, env(safe-area-inset-bottom)) 10px' : '16px 28px 22px 28px', flexShrink: 0 }}>
+      <div style={{ maxWidth: '780px', margin: '0 auto', position: 'relative' }}>
+
+        {slashMatches.length > 0 && (
+          <div
+            style={{
+              position: 'absolute',
+              bottom: '100%',
+              left: 0,
+              right: 0,
+              marginBottom: '8px',
+              background: 'var(--pragna-surface)',
+              border: '1px solid rgba(212,175,55,0.22)',
+              borderRadius: '10px',
+              boxShadow: '0 10px 24px rgba(0,0,0,0.5)',
+              padding: '4px',
+              zIndex: 50,
+            }}
+          >
+            {slashMatches.map((cmd) => (
+              <button
+                key={cmd.name}
+                onClick={() => {
+                  setText(`/${cmd.name} `);
+                  inputRef.current?.focus();
+                }}
+                style={{
+                  width: '100%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '10px',
+                  padding: '8px 12px',
+                  border: 'none',
+                  background: 'transparent',
+                  color: '#d8cbb0',
+                  fontSize: '13px',
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                  borderRadius: '7px',
+                }}
+                className="hover:bg-[#1e1a10] hover:text-[var(--pragna-gold-soft)]"
+              >
+                <span style={{ fontWeight: 650, color: 'var(--pragna-gold-soft)' }}>{cmd.usage}</span>
+                <span style={{ color: 'var(--pragna-text-muted)', fontSize: '12px' }}>{cmd.description}</span>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Attachment preview strip */}
+        {attachments.length > 0 && (
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '8px' }}>
+            {attachments.map((att, i) => (
+              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 10px', borderRadius: '8px', background: 'var(--pragna-surface-2)', border: '1px solid var(--pragna-border)', fontSize: '12px' }}>
+                {att.type === "image" && att.previewUrl ? (
+                  <img src={att.previewUrl} alt={att.name} style={{ width: '20px', height: '20px', objectFit: 'cover', borderRadius: '4px' }} />
+                ) : (
+                  <FileTextIcon size={13} color="var(--pragna-text-muted)" />
+                )}
+                <span style={{ color: '#d8cbb0', maxWidth: '120px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{att.name}</span>
+                <button onClick={() => removeAttachment(i)} style={{ border: 'none', background: 'transparent', color: '#ff6b6b', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: '2px' }} title="Remove">
+                  <CloseIcon size={12} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: isMobile ? 'column' : 'row',
+            alignItems: isMobile ? 'stretch' : 'center',
+            gap: isMobile ? '8px' : '10px',
+            padding: isMobile ? '8px 10px 8px 12px' : '7px 10px 7px 16px',
+            borderRadius: isMobile ? '20px' : '9999px',
+            background: 'rgba(18, 16, 12, 0.85)',
+            border: inputFocused
+              ? '1.5px solid rgba(212, 175, 55, 0.7)'
+              : '1.5px solid rgba(212, 175, 55, 0.42)',
+            backdropFilter: 'blur(16px)',
+            WebkitBackdropFilter: 'blur(16px)',
+            boxShadow: inputFocused
+              ? '0 0 35px rgba(212, 175, 55, 0.22), 0 12px 36px rgba(0, 0, 0, 0.65)'
+              : '0 0 24px rgba(212, 175, 55, 0.12), 0 8px 28px rgba(0, 0, 0, 0.5)',
+            transition: 'all 0.22s cubic-bezier(0.16, 1, 0.3, 1)',
+            boxSizing: 'border-box',
+          }}
+        >
+          {/* Text Area */}
+          <textarea
+            ref={inputRef}
+            rows="1"
+            placeholder={recording ? "Listening…" : "Ask Pragna anything…"}
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            onFocus={() => setInputFocused(true)}
+            onBlur={() => setInputFocused(false)}
+            onPaste={handlePaste}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                send();
+              }
+            }}
+            style={{
+              flex: 1,
+              width: '100%',
+              resize: 'none',
+              border: 'none',
+              outline: 'none',
+              boxShadow: 'none',
+              background: 'transparent',
+              color: '#fffdf7',
+              caretColor: 'var(--pragna-gold)',
+              fontFamily: 'var(--pragna-chat-font)',
+              fontSize: isMobile ? '16px' : '15px',
+              lineHeight: '22px',
+              padding: isMobile ? '7px 4px' : '7px 8px',
+              maxHeight: '180px',
+              minHeight: '36px',
+              height: '36px',
+              margin: 0,
+              boxSizing: 'border-box',
+              overflowY: 'hidden',
+              verticalAlign: 'middle',
+            }}
+          />
+
+          {/* Action Row */}
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              width: isMobile ? '100%' : 'auto',
+              gap: isMobile ? '6px' : '8px',
+            }}
+          >
+            {/* Left Controls */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? '4px' : '6px', minWidth: 0, flexWrap: 'wrap' }}>
+              {/* Attach Button */}
+              <div style={{ position: 'relative' }} ref={attachMenuRef}>
+                <button
+                  title="Attach file, image, or document"
+                  onClick={() => setAttachMenuOpen(!attachMenuOpen)}
+                  style={{
+                    width: '34px',
+                    height: '34px',
+                    flexShrink: 0,
+                    borderRadius: '50%',
+                    border: 'none',
+                    background: 'transparent',
+                    color: attachments.length > 0 ? 'var(--pragna-gold-soft)' : '#c9bda2',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    transition: 'all 0.15s ease',
+                  }}
+                  className="hover:text-[var(--pragna-gold-soft)] hover:bg-[rgba(212,175,55,0.12)]"
+                >
+                  <PlusIcon size={18} strokeWidth={2.2} />
+                </button>
+
+                {attachMenuOpen && (
+                  <div
+                    style={{
+                      position: 'absolute',
+                      bottom: '46px',
+                      left: 0,
+                      zIndex: 50,
+                      width: '150px',
+                      background: 'var(--pragna-surface)',
+                      border: '1px solid rgba(212,175,55,0.28)',
+                      borderRadius: '12px',
+                      boxShadow: '0 12px 32px rgba(0,0,0,0.65), 0 0 16px rgba(212,175,55,0.12)',
+                      backdropFilter: 'blur(14px)',
+                      padding: '4px',
+                    }}
+                  >
+                    {[
+                      { label: 'Image', type: 'image', accept: 'image/*', ref: imageInputRef },
+                      { label: 'Video', type: 'video', accept: 'video/*', ref: videoInputRef },
+                      { label: 'File', type: 'file', accept: '*/*', ref: fileInputRef },
+                      { label: 'Folder', type: 'folder', accept: undefined, ref: folderInputRef },
+                    ].map((item) => (
+                      <button
+                        key={item.label}
+                        onClick={() => item.ref.current?.click()}
+                        style={{
+                          width: '100%',
+                          padding: '8px 12px',
+                          border: 'none',
+                          background: 'transparent',
+                          color: '#d8cbb0',
+                          fontSize: '13px',
+                          cursor: 'pointer',
+                          textAlign: 'left',
+                          borderRadius: '7px',
+                        }}
+                        className="hover:bg-[#1e1a10] hover:text-[var(--pragna-gold-soft)]"
+                      >
+                        {item.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <input ref={imageInputRef} type="file" accept="image/*" multiple style={{ display: 'none' }} onChange={(e) => handleFilePick(e, 'image')} />
+              <input ref={videoInputRef} type="file" accept="video/*" multiple style={{ display: 'none' }} onChange={(e) => handleFilePick(e, 'video')} />
+              <input ref={fileInputRef} type="file" multiple style={{ display: 'none' }} onChange={(e) => handleFilePick(e, 'file')} />
+              <input ref={folderInputRef} type="file" webkitdirectory="" directory="" multiple style={{ display: 'none' }} onChange={(e) => handleFilePick(e, 'folder')} />
+
+              {/* Language Selector */}
+              <LanguageSelector />
+
+              {/* Voice microphone button */}
+              <button
+                title="Voice input"
+                onClick={toggleMic}
+                style={{
+                  width: '34px',
+                  height: '34px',
+                  flexShrink: 0,
+                  borderRadius: '50%',
+                  border: recording ? '1px solid rgba(239, 68, 68, 0.6)' : 'none',
+                  background: recording ? 'rgba(239, 68, 68, 0.18)' : 'transparent',
+                  color: recording ? '#ef4444' : '#c9bda2',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  transition: 'all 0.15s ease',
+                }}
+                className={recording ? 'animate-pulse' : 'hover:text-[var(--pragna-gold-soft)] hover:bg-[rgba(212,175,55,0.1)]'}
+              >
+                {recording ? <MicOffIcon size={17} /> : <MicIcon size={17} />}
+              </button>
+
+              {/* ChatGPT-style Voice Mode Button */}
+              <button
+                type="button"
+                onClick={() => setIsVoiceAssistantOpen(true)}
+                title="Voice Assistant Mode"
+                style={{
+                  width: '32px',
+                  height: '32px',
+                  flexShrink: 0,
+                  borderRadius: '50%',
+                  border: '1px solid rgba(212, 175, 55, 0.35)',
+                  background: 'rgba(212, 175, 55, 0.1)',
+                  color: 'var(--pragna-gold-soft, #d4af37)',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  transition: 'all 0.18s cubic-bezier(0.16, 1, 0.3, 1)',
+                }}
+                className="hover:scale-110 hover:bg-[rgba(212,175,55,0.22)] active:scale-95"
+              >
+                <SoundwaveIcon size={16} />
+              </button>
+
+              {/* Extended Thinking Toggle */}
+              <button
+                type="button"
+                title={extendedThinking ? "Extended Thinking enabled" : "Enable Extended Thinking"}
+                onClick={toggleExtendedThinking}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  padding: '5px 8px',
+                  borderRadius: '999px',
+                  background: extendedThinking ? 'rgba(212, 175, 55, 0.16)' : 'transparent',
+                  border: extendedThinking ? '1px solid rgba(212, 175, 55, 0.45)' : '1px solid transparent',
+                  color: extendedThinking ? 'var(--pragna-gold-soft)' : '#c9bda2',
+                  fontSize: '11.5px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease',
+                }}
+                className="hover:text-[var(--pragna-gold-soft)]"
+              >
+                <ThinkIcon size={14} />
+              </button>
+            </div>
+
+            {/* Right Controls: Send / Stop button */}
+            {isLoading ? (
+              <button
+                onClick={stopGeneration}
+                title="Stop generating"
+                style={{
+                  width: '38px',
+                  height: '38px',
+                  flexShrink: 0,
+                  borderRadius: '50%',
+                  border: '1px solid rgba(220, 100, 100, 0.4)',
+                  background: 'rgba(220, 60, 60, 0.25)',
+                  color: '#ff7b7b',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  boxShadow: '0 0 14px rgba(220, 60, 60, 0.3)',
+                  transition: 'all 0.15s ease',
+                }}
+                className="hover:bg-[rgba(220,60,60,0.4)] hover:scale-105 active:scale-95"
+              >
+                <StopIcon size={15} />
+              </button>
+            ) : (
+              <button
+                onClick={send}
+                disabled={!hasContent}
+                title="Send"
+                style={{
+                  width: '38px',
+                  height: '38px',
+                  flexShrink: 0,
+                  borderRadius: '50%',
+                  border: 'none',
+                  background: hasContent
+                    ? 'linear-gradient(135deg, #f5ebd9 0%, #e5c76b 50%, #d4af37 100%)'
+                    : 'linear-gradient(135deg, #f5ebd9 0%, #e5c76b 50%, #d4af37 100%)',
+                  color: '#14120c',
+                  cursor: hasContent ? 'pointer' : 'default',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  boxShadow: '0 2px 14px rgba(212, 175, 55, 0.45)',
+                  transition: 'all 0.18s cubic-bezier(0.16, 1, 0.3, 1)',
+                  opacity: hasContent ? 1 : 0.65,
+                }}
+                className={hasContent ? 'hover:scale-108 active:scale-95 hover:shadow-[0_4px_18px_rgba(212,175,55,0.6)]' : ''}
+              >
+                <SendIcon size={17} strokeWidth={2.4} />
+              </button>
+            )}
+          </div>
+        </div>
+
+        <div style={{ textAlign: 'center', marginTop: '10px', fontSize: '11.5px', color: 'var(--pragna-text-muted)', opacity: 0.6 }}>
+          Pragna can make mistakes. Verify important information.
+        </div>
+      </div>
+    </div>
+  );
+}
