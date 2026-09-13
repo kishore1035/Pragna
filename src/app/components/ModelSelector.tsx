@@ -60,14 +60,11 @@ export default function ModelSelector({
       </button>
 
       {open && (
-        <div className="absolute bottom-full right-0 mb-2 w-72 bg-card border border-border rounded-xl shadow-premium-lg z-50 overflow-hidden">
+        <div className="absolute bottom-full right-0 mb-2 w-52 bg-card border border-border rounded-xl shadow-premium-lg z-50 overflow-hidden">
           <div className="p-1.5">
             <div className="px-3 py-1.5 flex items-center justify-between border-b border-border/40 mb-1">
               <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70">
                 Model
-              </span>
-              <span className="text-[10px] text-muted-foreground/50">
-                Sanskrit Edition
               </span>
             </div>
             {models.map((model) => {
@@ -90,18 +87,13 @@ export default function ModelSelector({
                   <span className="text-primary flex-shrink-0">
                     {MODEL_ICONS[model.id] ?? <Brain size={13} />}
                   </span>
-                  <div className="flex-1 min-w-0 flex items-center justify-between gap-1.5">
+                  <div className="flex-1 min-w-0">
                     <p className="font-medium text-foreground text-xs truncate">
                       {config?.displayName ?? model.label}
                     </p>
-                    {config?.badge && (
-                      <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded bg-primary/15 text-primary border border-primary/25 ml-auto flex-shrink-0">
-                        {config.badge}
-                      </span>
-                    )}
                   </div>
                   {isSelected && (
-                    <Check size={14} className="text-primary flex-shrink-0" />
+                    <Check size={14} className="text-primary flex-shrink-0 ml-1.5" />
                   )}
                 </button>
               );
