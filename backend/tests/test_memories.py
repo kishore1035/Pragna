@@ -5,7 +5,7 @@ from app.memory_service import extract_and_save_memory, delete_memory_record
 
 
 def make_conn(tmp_path):
-    db_path = str(tmp_path / "mimir.db")
+    db_path = str(tmp_path / "pragna.db")
     init_db(db_path)
     conn = get_connection(db_path)
     repository.create_user(conn, "test@example.com", "hash")

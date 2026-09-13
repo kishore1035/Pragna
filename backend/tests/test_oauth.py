@@ -7,7 +7,7 @@ from app.main import create_app
 
 
 def make_conn(tmp_path):
-    db_path = str(tmp_path / "mimir.db")
+    db_path = str(tmp_path / "pragna.db")
     init_db(db_path)
     return get_connection(db_path)
 
