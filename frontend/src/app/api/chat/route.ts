@@ -61,14 +61,17 @@ function sseChunk(content: string): string {
   })}\n\n`;
 }
 
-// Quick heuristic to detect if the prompt asks for real-time external info or system actions
+// Quick heuristic to detect if the prompt asks for real-time external info or system actions.
+// Keep this list TIGHT — false positives send chat through the slow tool-deliberation loop.
 function queryNeedsTools(messages: any[]): boolean {
   if (!messages || messages.length === 0) return false;
   const last = messages[messages.length - 1]?.content?.toLowerCase() || '';
   const triggers = [
-    'who is', 'current', 'latest', 'today', '2026', '2025', 'minister', 'president', 'cm of',
-    'news', 'price', 'stock', 'weather', 'search', 'google', 'find out', 'file', 'terminal',
-    'run python', 'calculate', 'code', 'kanban', 'todo', 'memory'
+    'search for', 'google', 'browse', 'web search',
+    'what is the price', 'stock price', 'weather in', 'news about',
+    'run python', 'run code', 'execute', 'terminal',
+    'write to file', 'read file', 'kanban', 'todo list',
+    'who won', 'latest score', 'current prime minister', 'cm of',
   ];
   return triggers.some(t => last.includes(t));
 }
@@ -80,68 +83,104 @@ function getMemoryFilePaths(): string[] {
   return [path.join(baseDir, 'data', 'memories.json')];
 }
 
-async function getPersistentMemories(customUserName?: string, customUserNickname?: string): Promise<{ userName: string; userNickname: string; promptBlock: string }> {
-  let userName = customUserName || 'Vinay';
-  let userNickname = customUserNickname || '';
-  let memories: string[] = ["User's name is Vinay.", "User is creator and engineer at EtherX Innovations."];
+// In-process memory cache to avoid reading memories.json on every single request
+let _memoriesCache: { userName: string; userNickname: string; memories: string[] } | null = null;
+let _memoriesCacheAge = 0;
+const CACHE_TTL_MS = 5000; // refresh from disk every 5 seconds max
 
+function loadMemoriesSync(): { userName: string; userNickname: string; memories: string[] } {
+  const now = Date.now();
+  if (_memoriesCache && (now - _memoriesCacheAge) < CACHE_TTL_MS) {
+    return _memoriesCache;
+  }
+  const defaultData = {
+    userName: 'Vinay',
+    userNickname: '',
+    memories: ["User's name is Vinay.", "User is creator and engineer at EtherX Innovations."],
+  };
   for (const filePath of getMemoryFilePaths()) {
     try {
       if (fs.existsSync(filePath)) {
-        const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
-        if (data.userName) userName = customUserName || data.userName;
-        if (data.userNickname) userNickname = customUserNickname || data.userNickname;
-        if (Array.isArray(data.memories) && data.memories.length > 0) {
-          for (const m of data.memories) {
-            if (!memories.includes(m)) memories.push(m);
-          }
-        }
-        break;
+        const parsed = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+        const result = { ...defaultData, ...parsed };
+        if (Array.isArray(parsed.memories) && parsed.memories.length > 0) result.memories = parsed.memories;
+        _memoriesCache = result;
+        _memoriesCacheAge = now;
+        return result;
       }
-    } catch (e) {
-      console.error('Error loading memories file:', filePath, e);
-    }
+    } catch {}
   }
+  _memoriesCache = defaultData;
+  _memoriesCacheAge = now;
+  return defaultData;
+}
 
-  // Also query backend SQLite memories if running
+// Async: refresh backend SQLite memories into the file cache (runs in background after response starts)
+async function refreshMemoriesFromBackend(): Promise<void> {
   try {
     const res = await fetch('http://localhost:8000/api/memories', {
       headers: { 'Content-Type': 'application/json' },
-      signal: AbortSignal.timeout(600),
+      signal: AbortSignal.timeout(1500),
     });
-    if (res.ok) {
-      const backendMemories = await res.json();
-      if (Array.isArray(backendMemories)) {
-        for (const item of backendMemories) {
-          if (item.content && !memories.includes(item.content)) {
-            memories.push(item.content);
-          }
-        }
+    if (!res.ok) return;
+    const backendMemories = await res.json();
+    if (!Array.isArray(backendMemories)) return;
+
+    const current = loadMemoriesSync();
+    let changed = false;
+    for (const item of backendMemories) {
+      if (item.content && !current.memories.includes(item.content)) {
+        current.memories.push(item.content);
+        changed = true;
+      }
+      // Pull nickname from backend memories too
+      if (!current.userNickname && item.content) {
+        const m = item.content.match(/User's nickname is\s+([^.]+)/i);
+        if (m) { current.userNickname = m[1].trim(); changed = true; }
+      }
+    }
+    if (changed) {
+      _memoriesCache = current;
+      _memoriesCacheAge = Date.now();
+      // Persist back to disk
+      for (const filePath of getMemoryFilePaths()) {
+        try {
+          const dir = path.dirname(filePath);
+          if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+          fs.writeFileSync(filePath, JSON.stringify(current, null, 2), 'utf-8');
+        } catch {}
       }
     }
   } catch {}
+}
 
-  // Check if memories array has a nickname fact
-  for (const m of memories) {
-    const nickMatch = m.match(/User's nickname is\s+([^.]+)/i);
-    if (nickMatch && !userNickname) {
-      userNickname = nickMatch[1].trim();
+function getPersistentMemories(customUserName?: string, customUserNickname?: string): { userName: string; userNickname: string; promptBlock: string } {
+  const data = loadMemoriesSync();
+  const userName = customUserName || data.userName;
+  let userNickname = customUserNickname || data.userNickname;
+
+  // Pull nickname from memory facts if not set
+  if (!userNickname) {
+    for (const m of data.memories) {
+      const nickMatch = m.match(/User's nickname is\s+([^.]+)/i);
+      if (nickMatch) { userNickname = nickMatch[1].trim(); break; }
     }
   }
 
-  const memoryLines = memories.map(m => `  • ${m}`).join('\n');
+  const memoryLines = data.memories.map(m => `  • ${m}`).join('\n');
   const promptBlock = `\n\nUSER IDENTITY & PERSISTENT MEMORY (Always active across all conversations & tabs):
 - User's Name: ${userName}
 ${userNickname ? `- User's Nickname: ${userNickname}` : ''}
 - CRITICAL INSTRUCTIONS REGARDING USER IDENTITY & MEMORY:
-  1. User's Legal/Given Name: ${userName}. When the user asks "what's my name", "whats my name", or asks who they are, you must ALWAYS state directly and accurately that their name is ${userName}.
-  2. User's Nickname: ${userNickname ? `The user's established nickname is strictly "${userNickname}". When asked "what's my nickname" or "whats my nickname", state "${userNickname}" directly and accurately. Do NOT invent, assume, or suggest generic nicknames (such as "Vinny") when "${userNickname}" is on record.` : 'Check the durable facts below. If a nickname is recorded, state that exact nickname.'}
+  1. User's Legal/Given Name: ${userName}. When the user asks "what's my name", state their name is ${userName}.
+  2. User's Nickname: ${userNickname ? `The user's established nickname is strictly "${userNickname}". State it accurately. Do NOT invent nicknames.` : 'Check the durable facts below for any recorded nickname.'}
   3. Durable facts you remember about ${userName}:
 ${memoryLines}
-  4. NEVER confuse your name (Pragna) with the user's name (${userName}). You are Pragna; the user is ${userName}.`;
+  4. NEVER confuse your name (Pragna) with the user's name (${userName}).`;
 
   return { userName, userNickname, promptBlock };
 }
+
 
 function updateMemoriesFromMessage(content: string) {
   if (!content) return;
@@ -234,6 +273,8 @@ function updateMemoriesFromMessage(content: string) {
         console.error('Error saving memories.json to', filePath, e);
       }
     }
+    // Invalidate in-process cache so next request reloads fresh data
+    _memoriesCache = null;
 
     // Sync new facts to backend SQLite asynchronously
     for (const fact of newFactsToSync) {
@@ -245,6 +286,7 @@ function updateMemoriesFromMessage(content: string) {
     }
   }
 }
+
 
 export async function POST(req: NextRequest) {
   try {
@@ -279,10 +321,12 @@ export async function POST(req: NextRequest) {
     const lastUserMessage = messages[messages.length - 1]?.content || '';
     updateMemoriesFromMessage(lastUserMessage);
 
-    // Retrieve active persistent memories and inject into system prompt
-    const { promptBlock } = await getPersistentMemories(clientUserName, body.userNickname);
+    // Retrieve memories synchronously from cache/disk (fast), refresh backend in background
+    const { promptBlock } = getPersistentMemories(clientUserName, body.userNickname);
+    refreshMemoriesFromBackend(); // fire-and-forget — updates cache for next request
     const baseSystemPrompt = customSystemPrompt || SYSTEM_PROMPT;
     const fullSystemPrompt = `${baseSystemPrompt}${promptBlock}`;
+
 
 
     let targetModel = MODEL_MAP[model] || model;
