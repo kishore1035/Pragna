@@ -31,3 +31,14 @@ Thumbs.db
 .next/
 *.local
 tsconfig.tsbuildinfo
+
+# Root scripts & deploy files
+DEPLOY.md
+LICENSE
+argus*
+docker-compose.yml
+docs/
+mimir*
+pragna*
+render.yaml
+run_windows.bat
