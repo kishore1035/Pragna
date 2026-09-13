@@ -339,153 +339,98 @@ export async function POST(req: NextRequest) {
       })),
     ];
 
-    const needsToolDeliberation = enableTools && queryNeedsTools(messages);
-
     const stream = new ReadableStream({
       async start(controller) {
         const encoder = new TextEncoder();
+        const ollamaKey = process.env.OLLAMA_API_KEY || '26a95f0c5431431d8338645cdde4998f.CyDoeN4fDrSTJum8dpfRglps';
 
         const sendText = (text: string) => {
           controller.enqueue(encoder.encode(sseChunk(text)));
         };
 
-        const pipeStream = async (res: Response) => {
-          if (!res.body) return;
-          const reader = res.body.getReader();
-          const decoder = new TextDecoder();
-          let buffer = '';
-
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            buffer += decoder.decode(value, { stream: true });
-            const lines = buffer.split('\n');
-            buffer = lines.pop() || '';
-
-            for (const line of lines) {
-              const trimmed = line.trim();
-              if (!trimmed || trimmed.startsWith(':')) continue;
-              if (trimmed === 'data: [DONE]') continue;
-              if (trimmed.startsWith('data: ')) {
-                try {
-                  const data = JSON.parse(trimmed.slice(6));
-                  const delta = data.choices?.[0]?.delta?.content || '';
-                  if (delta) {
-                    sendText(delta);
-                  }
-                } catch {}
-              }
-            }
-          }
-        };
-
+        // Stream Ollama response (no tools — fallback only)
         const pipeOllamaStream = async (res: Response) => {
           if (!res.body) return;
           const reader = res.body.getReader();
           const decoder = new TextDecoder();
           let buffer = '';
-
           while (true) {
             const { done, value } = await reader.read();
             if (done) break;
             buffer += decoder.decode(value, { stream: true });
             const lines = buffer.split('\n');
             buffer = lines.pop() || '';
-
             for (const line of lines) {
               const trimmed = line.trim();
               if (!trimmed) continue;
               try {
                 const data = JSON.parse(trimmed);
                 const token = data.message?.content || '';
-                if (token) {
-                  sendText(token);
-                }
-                if (data.done) break;
+                if (token) sendText(token);
+                if (data.done) return;
               } catch {}
             }
           }
         };
 
-        try {
-          let activeModel = targetModel;
+        // Stream OpenRouter response WITH tool call detection.
+        // Returns accumulated tool calls if the model chose to call tools,
+        // or null if it streamed a text answer (already sent via sendText).
+        const streamWithTools = async (res: Response): Promise<any[] | null> => {
+          if (!res.body) return null;
+          const reader = res.body.getReader();
+          const decoder = new TextDecoder();
+          let buffer = '';
+          const tcAcc: Record<number, { id: string; name: string; args: string }> = {};
+          let hasToolCalls = false;
 
-          // Pure chat / code query: direct streaming without tool roundtrip
-          if (!needsToolDeliberation) {
-            let directRes = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-              method: 'POST',
-              headers: {
-                Authorization: `Bearer ${apiKey}`,
-                'Content-Type': 'application/json',
-                'HTTP-Referer': 'http://localhost:4028',
-                'X-Title': 'ClaudeChat',
-              },
-              body: JSON.stringify({
-                model: activeModel,
-                messages: conversationHistory,
-                temperature,
-                max_tokens: 1000,
-                stream: true,
-              }),
-            });
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop() || '';
 
-            if (!directRes.ok && activeModel !== 'deepseek/deepseek-chat') {
-              activeModel = 'deepseek/deepseek-chat';
-              directRes = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-                method: 'POST',
-                headers: {
-                  Authorization: `Bearer ${apiKey}`,
-                  'Content-Type': 'application/json',
-                  'HTTP-Referer': 'http://localhost:4028',
-                  'X-Title': 'ClaudeChat',
-                },
-                body: JSON.stringify({
-                  model: activeModel,
-                  messages: conversationHistory,
-                  temperature,
-                  max_tokens: 1000,
-                  stream: true,
-                }),
-              });
-            }
+            for (const line of lines) {
+              const trimmed = line.trim();
+              if (!trimmed || trimmed === 'data: [DONE]' || trimmed.startsWith(':')) continue;
+              if (!trimmed.startsWith('data: ')) continue;
+              try {
+                const data = JSON.parse(trimmed.slice(6));
+                const delta = data.choices?.[0]?.delta;
+                if (!delta) continue;
 
-            if (directRes.ok) {
-              await pipeStream(directRes);
-              controller.enqueue(encoder.encode('data: [DONE]\n\n'));
-              controller.close();
-              return;
-            }
+                // Text token — send immediately
+                if (delta.content) sendText(delta.content);
 
-            // Fallback: Ollama Cloud
-            const ollamaKey = process.env.OLLAMA_API_KEY || '26a95f0c5431431d8338645cdde4998f.CyDoeN4fDrSTJum8dpfRglps';
-            const ollamaRes = await fetch('https://api.ollama.com/api/chat', {
-              method: 'POST',
-              headers: {
-                Authorization: `Bearer ${ollamaKey}`,
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({
-                model: 'gemma4:cloud',
-                messages: conversationHistory.map(m => ({ role: m.role, content: m.content })),
-                stream: true,
-              }),
-            });
-
-            if (ollamaRes.ok) {
-              await pipeOllamaStream(ollamaRes);
-              controller.enqueue(encoder.encode('data: [DONE]\n\n'));
-              controller.close();
-              return;
+                // Tool call chunks — accumulate silently
+                if (delta.tool_calls) {
+                  hasToolCalls = true;
+                  for (const tc of delta.tool_calls) {
+                    const idx = tc.index ?? 0;
+                    if (!tcAcc[idx]) tcAcc[idx] = { id: '', name: '', args: '' };
+                    if (tc.id) tcAcc[idx].id = tc.id;
+                    if (tc.function?.name) tcAcc[idx].name += tc.function.name;
+                    if (tc.function?.arguments) tcAcc[idx].args += tc.function.arguments;
+                  }
+                }
+              } catch {}
             }
           }
 
-          // Tool deliberation & silent background execution
-          const MAX_ROUNDS = 3;
-          let currentRound = 0;
+          if (!hasToolCalls) return null;
+          return Object.values(tcAcc).map(tc => ({
+            id: tc.id,
+            function: { name: tc.name, arguments: tc.args },
+          }));
+        };
 
-          while (currentRound < MAX_ROUNDS) {
-            currentRound++;
+        try {
+          let activeModel = targetModel;
+          const MAX_ROUNDS = 4;
 
+          for (let round = 0; round < MAX_ROUNDS; round++) {
+            // Try primary model first, then deepseek fallback
             let res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
               method: 'POST',
               headers: {
@@ -498,89 +443,16 @@ export async function POST(req: NextRequest) {
                 model: activeModel,
                 messages: conversationHistory,
                 tools: AGENT_TOOLS_SCHEMA,
+                tool_choice: 'auto',
                 temperature,
-                max_tokens: Math.min(max_tokens, 2000),
+                max_tokens: 1000,
+                stream: true,
               }),
             });
 
-            // Fallback to deepseek-chat if model fails
-            if (!res.ok) {
-              if (activeModel !== 'deepseek/deepseek-chat') {
-                activeModel = 'deepseek/deepseek-chat';
-                res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-                  method: 'POST',
-                  headers: {
-                    Authorization: `Bearer ${apiKey}`,
-                    'Content-Type': 'application/json',
-                    'HTTP-Referer': 'http://localhost:4028',
-                    'X-Title': 'ClaudeChat',
-                  },
-                  body: JSON.stringify({
-                    model: activeModel,
-                    messages: conversationHistory,
-                    tools: AGENT_TOOLS_SCHEMA,
-                    temperature,
-                    max_tokens: Math.min(max_tokens, 2000),
-                  }),
-                });
-              }
-
-              if (!res.ok) {
-                // All OpenRouter paths failed — fall back to Ollama Cloud streaming (no tools)
-                const ollamaKey = process.env.OLLAMA_API_KEY || '26a95f0c5431431d8338645cdde4998f.CyDoeN4fDrSTJum8dpfRglps';
-                const ollamaFallback = await fetch('https://api.ollama.com/api/chat', {
-                  method: 'POST',
-                  headers: { Authorization: `Bearer ${ollamaKey}`, 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    model: 'gemma4:cloud',
-                    messages: conversationHistory.map((m: any) => ({ role: m.role, content: m.content || '' })),
-                    stream: true,
-                  }),
-                });
-                if (ollamaFallback.ok) {
-                  await pipeOllamaStream(ollamaFallback);
-                }
-                break;
-              }
-            }
-
-
-            const data = await res.json();
-            const choice = data.choices?.[0];
-            const message = choice?.message;
-
-            if (!message) break;
-
-            const toolCalls = message.tool_calls;
-            if (toolCalls && toolCalls.length > 0) {
-              conversationHistory.push({
-                role: 'assistant',
-                content: message.content || null,
-                tool_calls: toolCalls,
-              });
-
-              for (const tc of toolCalls) {
-                const toolName = tc.function?.name;
-                let toolArgs: Record<string, any> = {};
-                try {
-                  toolArgs = JSON.parse(tc.function?.arguments || '{}');
-                } catch {
-                  toolArgs = {};
-                }
-
-                // Execute tool silently in background (DO NOT send tool banners or raw metadata to user)
-                const result = await executeTool(toolName, toolArgs);
-
-                conversationHistory.push({
-                  role: 'tool',
-                  tool_call_id: tc.id,
-                  name: toolName,
-                  content: JSON.stringify(result),
-                });
-              }
-
-              // After tools are executed, stream ONLY the final natural language answer
-              const finalStreamRes = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+            if (!res.ok && activeModel !== 'deepseek/deepseek-chat') {
+              activeModel = 'deepseek/deepseek-chat';
+              res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
                 method: 'POST',
                 headers: {
                   Authorization: `Bearer ${apiKey}`,
@@ -591,26 +463,63 @@ export async function POST(req: NextRequest) {
                 body: JSON.stringify({
                   model: activeModel,
                   messages: conversationHistory,
+                  tools: AGENT_TOOLS_SCHEMA,
+                  tool_choice: 'auto',
                   temperature,
-                  max_tokens: Math.min(max_tokens, 3000),
+                  max_tokens: 1000,
                   stream: true,
                 }),
               });
+            }
 
-              if (finalStreamRes.ok) {
-                await pipeStream(finalStreamRes);
-              }
+            // If both OpenRouter options fail — use Ollama (no tools)
+            if (!res.ok) {
+              const ollamaRes = await fetch('https://api.ollama.com/api/chat', {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${ollamaKey}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  model: 'gemma4:cloud',
+                  messages: conversationHistory.map((m: any) => ({ role: m.role, content: m.content || '' })),
+                  stream: true,
+                }),
+              });
+              if (ollamaRes.ok) await pipeOllamaStream(ollamaRes);
               break;
             }
 
-            // No tools were called -> Stream the message directly
-            if (message.content) {
-              sendText(message.content);
+            // Stream the response and detect tool calls
+            const toolCalls = await streamWithTools(res);
+
+            // No tools called — the answer was already streamed, we're done
+            if (!toolCalls || toolCalls.length === 0) break;
+
+            // Tools were called — execute them silently
+            conversationHistory.push({
+              role: 'assistant',
+              content: null,
+              tool_calls: toolCalls.map(tc => ({
+                id: tc.id,
+                type: 'function',
+                function: { name: tc.function.name, arguments: tc.function.arguments },
+              })),
+            });
+
+            for (const tc of toolCalls) {
+              const toolName = tc.function?.name;
+              let toolArgs: Record<string, any> = {};
+              try { toolArgs = JSON.parse(tc.function?.arguments || '{}'); } catch {}
+              const result = await executeTool(toolName, toolArgs);
+              conversationHistory.push({
+                role: 'tool',
+                tool_call_id: tc.id,
+                name: toolName,
+                content: JSON.stringify(result),
+              });
             }
-            break;
+            // Loop continues — next iteration streams the final answer
           }
         } catch (err: any) {
-          console.error('Agent loop execution error:', err);
+          console.error('Agent loop error:', err);
           sendText(`\n\n*(Error: ${err.message || 'Unknown error'})*\n`);
         } finally {
           controller.enqueue(encoder.encode('data: [DONE]\n\n'));
@@ -618,6 +527,7 @@ export async function POST(req: NextRequest) {
         }
       },
     });
+
 
     return new Response(stream, {
       headers: {
