@@ -9,15 +9,13 @@ import VoiceAssistantModal from './VoiceAssistantModal';
 import ToolsPanel from './ToolsPanel';
 import { Conversation, Message, ModelOption } from '../types/chat';
 import { generateId, getConversationTitle, groupConversationsByDate } from '../utils/chatUtils';
+import { SANSKRIT_MODELS } from '@/lib/modelDisplayNames';
 
-export const MODELS: ModelOption[] = [
-  { id: 'deepseek-chat', label: 'DeepSeek V3 (Fast)', description: 'Instant response, high intelligence & live tools' },
-  { id: 'claude-sonnet-4-5', label: 'Claude Sonnet 4.5', description: 'Deep reasoning & articulate' },
-  { id: 'claude-opus-4-5', label: 'Claude Opus 4.5', description: 'Complex multi-step tasks' },
-  { id: 'claude-haiku-3-5', label: 'Claude Haiku 3.5', description: 'Fast & efficient' },
-  { id: 'google/gemma-4-31b-it:free', label: 'Google Gemma 4 31B', description: 'Open weights (Free)' },
-  { id: 'nvidia/nemotron-3-super-120b-a12b:free', label: 'Nvidia Nemotron 120B', description: 'High capability (Free)' },
-];
+export const MODELS: ModelOption[] = SANSKRIT_MODELS.map((m) => ({
+  id: m.id,
+  label: m.displayName,
+  description: m.subtitle,
+}));
 
 const STORAGE_KEY = 'claudechat_conversations';
 const ACTIVE_KEY = 'claudechat_active';

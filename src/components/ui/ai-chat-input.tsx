@@ -3,6 +3,7 @@
 import * as React from "react";
 import { useRef, useState, useEffect, useCallback } from "react";
 import { cn } from "@/lib/utils";
+import { getModelConfig, SANSKRIT_MODELS } from "@/lib/modelDisplayNames";
 
 // ----------------------------------------------------------------------
 // Transition Physics
@@ -54,9 +55,16 @@ function MorphingText({ text }: { text: string }) {
 }
 
 function ModelIcon({ model, className }: { model: string; className?: string }) {
+  const config = getModelConfig(model);
+  const provider = config?.provider;
   const lower = (model || "").toLowerCase();
 
-  if (lower.includes("deepseek")) {
+  if (
+    provider === "deepseek" ||
+    lower.includes("deepseek") ||
+    lower.includes("tvarā") ||
+    lower.includes("tvara")
+  ) {
     return (
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className={cn("text-primary", className)} aria-hidden="true">
         <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
@@ -64,7 +72,16 @@ function ModelIcon({ model, className }: { model: string; className?: string }) 
     );
   }
 
-  if (lower.includes("claude") || lower.includes("sonnet") || lower.includes("opus") || lower.includes("haiku")) {
+  if (
+    provider === "anthropic" ||
+    lower.includes("claude") ||
+    lower.includes("sonnet") ||
+    lower.includes("opus") ||
+    lower.includes("haiku") ||
+    lower.includes("sthira") ||
+    lower.includes("pragya") ||
+    lower.includes("laghu")
+  ) {
     return (
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className={cn("text-primary", className)} aria-hidden="true">
         <circle cx="12" cy="12" r="3.5" fill="currentColor" />
@@ -73,7 +90,13 @@ function ModelIcon({ model, className }: { model: string; className?: string }) 
     );
   }
 
-  if (lower.includes("gemini") || lower.includes("gemma") || lower.includes("google")) {
+  if (
+    provider === "google" ||
+    lower.includes("gemini") ||
+    lower.includes("gemma") ||
+    lower.includes("google") ||
+    lower.includes("manas")
+  ) {
     return (
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className={cn("text-primary", className)} aria-hidden="true">
         <path d="M12 2C12 7.52 7.52 12 2 12c5.52 0 10 4.48 10 10 0-5.52 4.48-10 10-10-5.52 0-10-4.48-10-10z" fill="currentColor" />
@@ -81,7 +104,13 @@ function ModelIcon({ model, className }: { model: string; className?: string }) 
     );
   }
 
-  if (lower.includes("nvidia") || lower.includes("nemotron")) {
+  if (
+    provider === "nvidia" ||
+    lower.includes("nvidia") ||
+    lower.includes("nemotron") ||
+    lower.includes("bṛhat") ||
+    lower.includes("brihat")
+  ) {
     return (
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className={cn("text-primary", className)} aria-hidden="true">
         <rect x="3" y="3" width="18" height="18" rx="4" stroke="currentColor" strokeWidth="2" />
@@ -364,7 +393,7 @@ export const PromptInput = React.forwardRef<HTMLDivElement, PromptInputProps>(
       onSubmit,
       placeholder = "Ask Pragna anything...",
       className,
-      models = ["DeepSeek V3 (Fast)", "Claude Sonnet 4.5", "Claude Opus 4.5", "Google Gemma 4 31B", "Nvidia Nemotron 120B"],
+      models = SANSKRIT_MODELS.map((m) => m.displayName),
       efforts = ["Low", "Medium", "Max Effort"],
       defaultValue = "",
       value: controlledValue,
@@ -382,13 +411,25 @@ export const PromptInput = React.forwardRef<HTMLDivElement, PromptInputProps>(
     const [expanded, setExpanded] = useState(false);
     const [isSmoothResize, setIsSmoothResize] = useState(false);
     const [localValue, setLocalValue] = useState(defaultValue);
-    const [selectedModel, setSelectedModel] = useState(initialModel || models[0]);
+    const [selectedModel, setSelectedModel] = useState(() => {
+      if (initialModel) {
+        const cfg = getModelConfig(initialModel);
+        if (cfg && models.includes(cfg.displayName)) return cfg.displayName;
+        if (models.includes(initialModel)) return initialModel;
+      }
+      return models[0] || "Tvarā";
+    });
     const [effortIndex, setEffortIndex] = useState(1);
     const [isModelSelectOpen, setIsModelSelectOpen] = useState(false);
 
     useEffect(() => {
-      if (initialModel && models.includes(initialModel)) {
-        setSelectedModel(initialModel);
+      if (initialModel) {
+        const cfg = getModelConfig(initialModel);
+        if (cfg && models.includes(cfg.displayName)) {
+          setSelectedModel(cfg.displayName);
+        } else if (models.includes(initialModel)) {
+          setSelectedModel(initialModel);
+        }
       }
     }, [initialModel, models]);
 
@@ -929,67 +970,122 @@ export const PromptInput = React.forwardRef<HTMLDivElement, PromptInputProps>(
               )}
             >
               <div className="relative">
-                <button
-                  type="button"
-                  onMouseDown={(e) => e.preventDefault()} 
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setIsModelSelectOpen((prev) => !prev);
-                  }}
-                  className={cn(
-                    "group flex items-center gap-1.5 rounded-full px-2.5 py-1 text-foreground/70 transition-all duration-200 outline-none hover:bg-primary/15 hover:text-primary cursor-default border border-transparent hover:border-primary/30",
-                    isModelSelectOpen ? "bg-primary/20 text-primary border-primary/40" : ""
-                  )}
-                  aria-label={`Select model. Current: ${selectedModel}`}
-                >
-                  <ModelIcon model={selectedModel} className="size-3.5 opacity-80 group-hover:opacity-100 transition-opacity flex-shrink-0" />
-                  <span className="text-xs font-semibold select-none transition-colors">
-                    <MorphingText text={selectedModel} />
-                  </span>
-                </button>
+                {(() => {
+                  const currentConfig = getModelConfig(selectedModel);
+                  return (
+                    <button
+                      type="button"
+                      onMouseDown={(e) => e.preventDefault()} 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setIsModelSelectOpen((prev) => !prev);
+                      }}
+                      className={cn(
+                        "group flex items-center gap-1.5 rounded-full px-2.5 py-1 text-foreground/70 transition-all duration-200 outline-none hover:bg-primary/15 hover:text-primary cursor-default border border-transparent hover:border-primary/30",
+                        isModelSelectOpen ? "bg-primary/20 text-primary border-primary/40" : ""
+                      )}
+                      aria-label={`Select model. Current: ${currentConfig?.tooltip || selectedModel}`}
+                      title={currentConfig?.tooltip || selectedModel}
+                      data-ascii={currentConfig?.asciiFallback}
+                    >
+                      <ModelIcon model={selectedModel} className="size-3.5 opacity-80 group-hover:opacity-100 transition-opacity flex-shrink-0" />
+                      <span className="text-xs font-semibold select-none transition-colors">
+                        <MorphingText text={currentConfig?.displayName || selectedModel} />
+                      </span>
+                    </button>
+                  );
+                })()}
 
                 <div
                   style={{ transformOrigin: "bottom left", backgroundColor: "var(--card)" }}
-                  onMouseLeave={() => {
-                    setHoverStyle((prev) => ({
-                      ...prev, opacity: 0, transform: prev.transform.replace("scale(1)", "scale(0.95)"), transition: "opacity 0.2s ease-in, transform 0.2s ease-out",
-                    }));
-                  }}
                   className={cn(
-                    "absolute bottom-full left-0 mb-2.5 z-50 min-w-48 max-w-64 rounded-2xl border border-border bg-card p-1.5 shadow-premium-lg flex flex-col gap-0.5 transition-all duration-400 cursor-default",
+                    "absolute bottom-full left-0 mb-2.5 z-50 w-72 sm:w-80 rounded-2xl border border-border bg-card p-2 shadow-premium-lg flex flex-col gap-1 transition-all duration-400 cursor-default",
                     isModelSelectOpen
                       ? "opacity-100 scale-100 translate-y-0 pointer-events-auto ease-[cubic-bezier(0.34,1.56,0.64,1)]"
                       : "opacity-0 scale-95 translate-y-3 pointer-events-none ease-[cubic-bezier(0.175,0.885,0.32,1.275)]"
                   )}
                 >
-                  <div className="relative flex flex-col gap-0.5">
-                    <div style={hoverStyle} className="absolute left-0 right-0 top-0 h-8 -z-10 rounded-xl bg-primary/20 pointer-events-none" />
-                    {models.map((model, idx) => (
-                      <button
-                        key={model}
-                        type="button"
-                        onMouseDown={(e) => e.preventDefault()}
-                        onMouseEnter={() => {
-                          setHoverStyle((prev) => ({
-                            opacity: 1, transform: `translateY(${idx * 34}px) scale(1)`,
-                            transition: prev.opacity === 0 ? "opacity 0.15s ease-out" : "transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 0.15s ease", 
-                          }));
-                        }}
-                        onClick={(e) => { e.stopPropagation(); handleSelectModel(model); setIsModelSelectOpen(false); }}
-                        className={cn(
-                          "group relative flex h-8 w-full items-center justify-between rounded-xl px-2.5 py-1.5 text-left text-xs font-medium outline-none active:scale-[0.98] cursor-default transition-colors",
-                          model === selectedModel ? "text-primary font-semibold" : "text-foreground/80 hover:text-foreground"
-                        )}
-                      >
-                        <span className="flex items-center gap-2 truncate">
-                          <ModelIcon model={model} className="size-3.5 opacity-85 group-hover:opacity-100 transition-opacity flex-shrink-0" />
-                          <span className="truncate">{model}</span>
-                        </span>
-                        {model === selectedModel && (
-                          <span className="w-1.5 h-1.5 rounded-full bg-primary flex-shrink-0" />
-                        )}
-                      </button>
-                    ))}
+                  <div className="px-2 py-1 flex items-center justify-between border-b border-border/40 mb-0.5">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70">
+                      Model
+                    </span>
+                    <span className="text-[10px] text-muted-foreground/50">
+                      Sanskrit Edition
+                    </span>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    {models.map((model) => {
+                      const config = getModelConfig(model);
+                      const isSelected =
+                        model === selectedModel ||
+                        config?.displayName === selectedModel ||
+                        config?.id === selectedModel;
+                      return (
+                        <button
+                          key={model}
+                          type="button"
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleSelectModel(model);
+                            setIsModelSelectOpen(false);
+                          }}
+                          title={config?.tooltip || model}
+                          aria-label={config?.tooltip || model}
+                          data-ascii={config?.asciiFallback}
+                          className={cn(
+                            "group relative flex flex-col w-full rounded-xl px-2.5 py-2 text-left outline-none cursor-default transition-all duration-150",
+                            isSelected
+                              ? "bg-primary/15 border border-primary/30 shadow-sm text-primary"
+                              : "hover:bg-primary/10 text-foreground/80 hover:text-foreground border border-transparent"
+                          )}
+                        >
+                          <div className="flex items-center justify-between w-full gap-2">
+                            <span className="flex items-center gap-2 min-w-0">
+                              <ModelIcon
+                                model={model}
+                                className="size-3.5 opacity-85 group-hover:opacity-100 transition-opacity flex-shrink-0"
+                              />
+                              <span className="font-semibold text-xs text-foreground tracking-tight">
+                                {config?.displayName || model}
+                              </span>
+                              {config?.sanskritScript && (
+                                <span className="text-[11px] text-muted-foreground/60 font-serif">
+                                  ({config.sanskritScript})
+                                </span>
+                              )}
+                            </span>
+
+                            <div className="flex items-center gap-1.5 flex-shrink-0">
+                              {config?.badge && (
+                                <span
+                                  className={cn(
+                                    "text-[9px] font-semibold px-1.5 py-0.5 rounded border",
+                                    config.badge === 'ACTIVE' || config.badge === 'Recommended'
+                                      ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/25"
+                                      : config.badge === 'Fast'
+                                      ? "bg-amber-500/15 text-amber-400 border-amber-500/25"
+                                      : config.badge === 'Pro'
+                                      ? "bg-purple-500/15 text-purple-400 border-purple-500/25"
+                                      : "bg-primary/15 text-primary border-primary/25"
+                                  )}
+                                >
+                                  {config.badge}
+                                </span>
+                              )}
+                              {isSelected && (
+                                <span className="w-1.5 h-1.5 rounded-full bg-primary flex-shrink-0 shadow-sm" />
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Subtitle / Meaning + Real Model Mapping */}
+                          <span className="text-[10.5px] text-muted-foreground/70 truncate pl-[22px] mt-0.5 block">
+                            {config?.subtitle || config?.rawName || model}
+                          </span>
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
               </div>

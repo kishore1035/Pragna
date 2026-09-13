@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Search, MessageSquare, Settings, Zap, Brain, FolderOpen, Plus, ArrowRight } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import { SANSKRIT_MODELS } from '@/lib/modelDisplayNames';
 
 interface CommandItem {
   id: string;
@@ -59,24 +60,14 @@ export default function CommandPalette({ open, onClose }: CommandPaletteProps) {
       },
     ];
 
-    const models: CommandItem[] = [
-      {
-        id: 'model-claude',
-        label: 'Switch to Claude 3.5 Sonnet',
-        description: 'Long context · Thoughtful',
-        icon: <Brain size={15} className="text-primary" />,
-        action: () => { onClose(); },
-        group: 'Models',
-      },
-      {
-        id: 'model-gpt4',
-        label: 'Switch to GPT-4o',
-        description: 'Fast · Versatile',
-        icon: <Zap size={15} className="text-emerald-500" />,
-        action: () => { onClose(); },
-        group: 'Models',
-      },
-    ];
+    const models: CommandItem[] = SANSKRIT_MODELS.map((m) => ({
+      id: `model-${m.id}`,
+      label: `Switch to ${m.displayName} (${m.sanskritScript})`,
+      description: m.subtitle,
+      icon: <Zap size={15} className="text-primary" />,
+      action: () => { onClose(); },
+      group: 'Models',
+    }));
 
     const chats: CommandItem[] = recentChats.map((c) => ({
       id: c.id,

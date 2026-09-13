@@ -229,10 +229,10 @@ export default function ChatWindow({
                 onSendMessage(msg);
               }}
               placeholder="Reply to Pragna..."
-              initialModel={selectedModel?.label || "DeepSeek V3 (Fast)"}
+              initialModel={selectedModel?.label || "Tvarā"}
               models={models.map(m => m.label)}
               onModelChange={(modelLabel) => {
-                const found = models.find(m => m.label === modelLabel);
+                const found = models.find(m => m.label === modelLabel || m.id === modelLabel);
                 if (found && onSelectModel) onSelectModel(found);
               }}
               isStreaming={isStreaming}
