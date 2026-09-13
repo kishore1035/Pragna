@@ -71,7 +71,7 @@ export default function ModelsSettings() {
   const [temperature, setTemperature] = useState('0.7');
   const [maxTokens, setMaxTokens] = useState('4000');
   const [systemPrompt, setSystemPrompt] = useState(
-    'You are Claude, a thoughtful, articulate, and helpful AI assistant created by Anthropic. When generating code, HTML, React components, SVGs, or technical documents, produce clean, well-structured, production-quality code with markdown syntax.'
+    'You are Pragna, a thoughtful, articulate, and helpful AI assistant. When generating code, HTML, React components, SVGs, or technical documents, produce clean, well-structured, production-quality code with markdown syntax.'
   );
   const [promptSaving, setPromptSaving] = useState(false);
   const [promptSaved, setPromptSaved] = useState(false);
