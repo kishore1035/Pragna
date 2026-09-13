@@ -8,29 +8,27 @@ export const maxDuration = 120;
 const MODEL_MAP: Record<string, string> = {
   'claude-sonnet-4-5': 'anthropic/claude-sonnet-4.5',
   'claude-opus-4-5': 'anthropic/claude-opus-4.5',
-  'claude-haiku-3-5': 'anthropic/claude-sonnet-4.5', // Avoid 404
+  'claude-haiku-3-5': 'anthropic/claude-sonnet-4.5',
   'deepseek-chat': 'deepseek/deepseek-chat',
   'deepseek-v3': 'deepseek/deepseek-chat',
   'gemma-free': 'google/gemma-4-31b-it:free',
 };
 
-const SYSTEM_PROMPT = `You are Claude, an autonomous AI assistant with real-time tool execution capabilities.
+const SYSTEM_PROMPT = `You are Claude, an intelligent, articulate, and thoughtful AI assistant.
 Current Date: September 2026.
 
-Available tools:
-- web_search: Search live web for real-time information, 2026 events, current leaders, facts, news, documentation.
-- web_extract: Extract and read clean markdown text from any web URL.
-- x_search: Search posts and discussions on X / Twitter.
-- read_file, write_file, patch, search_files: Inspect and edit local workspace files.
-- terminal: Execute bash shell commands.
-- run_python_code: Run Python 3 code in a real interpreter.
-- todo, memory, kanban: Manage tasks, persistent notes, and project Kanban boards.
-- image_generate: Create visual images using AI.
+You have access to tools for live information retrieval and execution (web_search, web_extract, x_search, read_file, write_file, patch, search_files, terminal, run_python_code, todo, memory, kanban, image_generate).
 
-RULES:
-1. ALWAYS use "web_search" when asked about current leaders, news, real-time facts, or events up to 2026. Never claim your knowledge cut off in 2024 if you can search the web!
-2. Answer concisely, accurately, and articulately.
-3. For code or artifacts, use markdown code blocks (\`\`\`language\\n...\\n\`\`\`).`;
+CRITICAL TOOL & RESPONSE RULES:
+1. NEVER expose raw tool invocations or metadata in your reply to the user. Do not print things like "Tool Action:", "🔍", "⚡ Result:", function names, query strings, or raw result dumps. The tool call is strictly an internal background step — the user must ONLY see your final, natural-language answer.
+2. Format:
+   - Answer the question directly and conversationally, as if you already knew it.
+   - Weave in citations/sources only if the user asks for them or it's clearly useful (e.g., "according to [source]").
+   - NO preamble like "Based on the search results...", "According to my web search...", or "After checking..." — just answer directly.
+3. Efficiency:
+   - Before calling a tool, check if you already have sufficient information from earlier in the conversation to answer. If the user asks a near-duplicate or rephrased version of a question you already answered, reuse that answer instead of re-searching from scratch.
+   - Only re-search if the topic is time-sensitive enough that the earlier result could be stale, or if the user is explicitly asking for a refresh.
+4. When writing code, components, or artifacts, format them in standard markdown code blocks (\`\`\`language\\n...\\n\`\`\`).`;
 
 function sseChunk(content: string): string {
   return `data: ${JSON.stringify({
@@ -38,7 +36,7 @@ function sseChunk(content: string): string {
   })}\n\n`;
 }
 
-// Quick heuristic to detect if the prompt explicitly needs live external data / actions
+// Quick heuristic to detect if the prompt asks for real-time external info or system actions
 function queryNeedsTools(messages: any[]): boolean {
   if (!messages || messages.length === 0) return false;
   const last = messages[messages.length - 1]?.content?.toLowerCase() || '';
@@ -60,6 +58,7 @@ export async function POST(req: NextRequest) {
       max_tokens = 4000,
       apiKey: customApiKey,
       enableTools = true,
+      systemPrompt: customSystemPrompt,
     } = body;
 
     const apiKey =
@@ -80,7 +79,7 @@ export async function POST(req: NextRequest) {
     let targetModel = MODEL_MAP[model] || model;
 
     const conversationHistory: any[] = [
-      { role: 'system', content: SYSTEM_PROMPT },
+      { role: 'system', content: customSystemPrompt || SYSTEM_PROMPT },
       ...messages.map((m: any) => ({
         role: m.role,
         content: m.content,
@@ -130,7 +129,7 @@ export async function POST(req: NextRequest) {
         try {
           let activeModel = targetModel;
 
-          // If the query does not ask for real-time/tools, stream DIRECTLY with low latency
+          // Pure chat / code query: direct streaming without tool roundtrip
           if (!needsToolDeliberation) {
             const directRes = await fetch('https://openrouter.ai/api/v1/chat/completions', {
               method: 'POST',
@@ -157,7 +156,7 @@ export async function POST(req: NextRequest) {
             }
           }
 
-          // Otherwise, run autonomous tool execution loop
+          // Tool deliberation & silent background execution
           const MAX_ROUNDS = 3;
           let currentRound = 0;
 
@@ -181,7 +180,7 @@ export async function POST(req: NextRequest) {
               }),
             });
 
-            // Model fallback
+            // Fallback to deepseek-chat if model fails
             if (!res.ok) {
               if (activeModel !== 'deepseek/deepseek-chat') {
                 activeModel = 'deepseek/deepseek-chat';
@@ -233,16 +232,8 @@ export async function POST(req: NextRequest) {
                   toolArgs = {};
                 }
 
-                const argsSummary = Object.entries(toolArgs)
-                  .map(([k, v]) => `${k}="${typeof v === 'string' ? v.slice(0, 35) : JSON.stringify(v)}"`)
-                  .join(', ');
-
-                // Send immediate visual status
-                sendText(`> 🔍 **Tool Call**: \`${toolName}\` *(${argsSummary})*\n`);
-
+                // Execute tool silently in background (DO NOT send tool banners or raw metadata to user)
                 const result = await executeTool(toolName, toolArgs);
-
-                sendText(`> ⚡ *Result*: ${result.summary || 'Completed'}\n\n`);
 
                 conversationHistory.push({
                   role: 'tool',
@@ -252,7 +243,7 @@ export async function POST(req: NextRequest) {
                 });
               }
 
-              // After tools are executed, stream the final synthesis DIRECTLY via OpenRouter SSE
+              // After tools are executed, stream ONLY the final natural language answer
               const finalStreamRes = await fetch('https://openrouter.ai/api/v1/chat/completions', {
                 method: 'POST',
                 headers: {
