@@ -47,10 +47,8 @@ export default function AuthScreen() {
       <InteractiveNeuralVortex />
 
       <div className="relative z-10 w-full max-w-sm bg-card border border-border rounded-2xl p-6 shadow-premium-lg">
-        <div className="flex items-center justify-center mb-4">
-          <div className="w-12 h-12 rounded-2xl bg-card border border-border shadow-premium-sm flex items-center justify-center p-1">
-            <AppLogo size={32} variant="shield" />
-          </div>
+        <div className="flex items-center justify-center mb-5">
+          <AppLogo size={36} variant="full" />
         </div>
         <h1 className="text-lg font-bold text-foreground mb-1 text-center">
           {mode === 'login' ? 'Log in to Pragna' : 'Create your Pragna account'}

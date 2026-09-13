@@ -86,19 +86,13 @@ export default function Sidebar({ onNavigate }: SidebarProps) {
         {!collapsed && (
           <Link
             href="/"
-            className="flex items-center gap-2.5 flex-1 min-w-0"
+            className="flex items-center gap-2.5 flex-1 min-w-0 select-none py-0.5"
             onClick={() => {
               startNewChat();
               onNavigate?.();
             }}
           >
-            <AppLogo size={32} variant="shield" />
-            <div className="flex items-center gap-1.5 truncate">
-              <span className="font-bold text-base text-foreground truncate">Pragna</span>
-              <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-primary/15 text-primary border border-primary/25">
-                AI
-              </span>
-            </div>
+            <AppLogo size={30} variant="full" />
           </Link>
         )}
         {collapsed && (

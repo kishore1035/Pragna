@@ -128,14 +128,12 @@ export default function Sidebar({
         <div className="flex flex-col h-full w-[260px]">
           {/* Header */}
           <div className="flex items-center justify-between px-3 py-3 flex-shrink-0">
-            <div className="flex items-center gap-2.5">
-              <AppLogo size={28} variant="shield" />
-              <div className="flex items-center gap-1.5">
-                <span className="font-bold text-sm text-foreground tracking-tight">Pragna</span>
-                <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-primary/15 text-primary border border-primary/25">
-                  AI
-                </span>
-              </div>
+            <div
+              className="flex items-center cursor-pointer select-none py-0.5"
+              onClick={onNewConversation}
+              title="Pragna AI - Start new chat"
+            >
+              <AppLogo size={30} variant="full" />
             </div>
             <button
               onClick={onToggle}

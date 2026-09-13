@@ -2,13 +2,12 @@
 
 import React, { memo, useMemo } from 'react';
 import AppIcon from './AppIcon';
-import AppImage from './AppImage';
 
 interface AppLogoProps {
   src?: string; // Image source (optional)
   variant?: 'shield' | 'full' | 'wordmark' | 'icon'; // Pragna variant
   iconName?: string; // Icon name when no image
-  size?: number; // Size for icon/image (height for full/wordmark)
+  size?: number; // Size for icon/image (height for full/wordmark, square dimension for shield/icon)
   className?: string; // Additional classes
   onClick?: () => void; // Click handler
 }
@@ -26,20 +25,20 @@ const AppLogo = memo(function AppLogo({
     if (src) return src;
     switch (variant) {
       case 'full':
-        return '/assets/images/pragna-logo-full.png';
+        return '/pragna-logo-full.png';
       case 'wordmark':
-        return '/assets/images/pragna-wordmark.png';
+        return '/pragna-wordmark.png';
       case 'icon':
-        return '/assets/images/pragna-logo-icon.png';
+        return '/pragna-logo-icon.png';
       case 'shield':
       default:
-        return '/assets/images/pragna-shield-icon.png';
+        return '/pragna-shield-icon.png';
     }
   }, [src, variant]);
 
   // Memoize className calculation
   const containerClassName = useMemo(() => {
-    const classes = ['flex items-center select-none'];
+    const classes = ['inline-flex items-center justify-center select-none bg-transparent'];
     if (onClick) classes.push('cursor-pointer hover:opacity-85 transition-opacity');
     if (className) classes.push(className);
     return classes.join(' ');
@@ -48,12 +47,12 @@ const AppLogo = memo(function AppLogo({
   // Aspect ratio calculation for horizontal variants
   const { width, height } = useMemo(() => {
     if (variant === 'full') {
-      // 320 x 89 ~ 3.6:1
+      // 320 x 89 ~ 3.595:1
       return { width: Math.round(size * 3.6), height: size };
     }
     if (variant === 'wordmark') {
-      // 215 x 26 ~ 8.2:1
-      return { width: Math.round(size * 8.2), height: size };
+      // 215 x 26 ~ 8.27:1
+      return { width: Math.round(size * 8.27), height: size };
     }
     return { width: size, height: size };
   }, [variant, size]);
@@ -61,14 +60,15 @@ const AppLogo = memo(function AppLogo({
   return (
     <div className={containerClassName} onClick={onClick}>
       {imageSrc ? (
-        <AppImage
+        <img
           src={imageSrc}
           alt="Pragna"
           width={width}
           height={height}
-          className="flex-shrink-0 object-contain drop-shadow-sm"
-          priority={true}
-          unoptimized={imageSrc.endsWith('.svg')}
+          className="flex-shrink-0 object-contain bg-transparent select-none filter drop-shadow-[0_2px_12px_rgba(212,175,55,0.22)]"
+          style={{ width: `${width}px`, height: `${height}px` }}
+          loading="eager"
+          decoding="async"
         />
       ) : (
         <AppIcon name={iconName} size={size} className="flex-shrink-0" />
@@ -78,3 +78,4 @@ const AppLogo = memo(function AppLogo({
 });
 
 export default AppLogo;
+

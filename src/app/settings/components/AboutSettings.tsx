@@ -19,8 +19,8 @@ export default function AboutSettings() {
       </div>
       {/* App identity */}
       <div className="border border-border rounded-xl p-5 bg-card mb-4 flex items-center gap-4">
-        <div className="p-2 rounded-2xl bg-card border border-border shadow-premium-sm flex items-center justify-center">
-          <AppLogo size={56} variant="shield" />
+        <div className="flex-shrink-0 flex items-center justify-center p-1">
+          <AppLogo size={52} variant="shield" className="drop-shadow-[0_2px_14px_rgba(212,175,55,0.25)]" />
         </div>
         <div>
           <div className="flex items-center gap-2">

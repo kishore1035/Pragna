@@ -62,7 +62,7 @@ const AppImage = memo(function AppImage({
 
     const imageClassName = useMemo(() => {
         const classes = [className];
-        if (isLoading) classes.push('bg-gray-200');
+        if (isLoading && !className?.includes('bg-')) classes.push('bg-muted/10');
         if (onClick) classes.push('cursor-pointer hover:opacity-90 transition-opacity duration-200');
         return classes.filter(Boolean).join(' ');
     }, [className, isLoading, onClick]);

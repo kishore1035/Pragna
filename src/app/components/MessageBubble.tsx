@@ -106,8 +106,8 @@ export default function MessageBubble({
         /* Assistant message */
         <div className="message-enter group/msg">
           <div className="flex items-start gap-3">
-            <div className="flex-shrink-0 w-7 h-7 mt-0.5 rounded-lg overflow-hidden flex items-center justify-center bg-card border border-border/70 shadow-sm p-0.5">
-              <AppLogo size={22} variant="shield" />
+            <div className="flex-shrink-0 w-7 h-7 mt-0.5 flex items-center justify-center">
+              <AppLogo size={24} variant="shield" />
             </div>
 
             <div className="flex-1 min-w-0">

@@ -50,12 +50,12 @@ export default function EmptyState({
 
         {/* Greeting with Pragna Shield */}
         <div className="flex flex-col items-center gap-4 text-center">
-          <div className="relative">
-            <div className="w-16 h-16 rounded-2xl bg-card border border-border shadow-premium-md flex items-center justify-center p-3 relative overflow-hidden group hover:border-primary/50 transition-colors">
-              <div className="absolute inset-0 bg-gradient-to-br from-primary/20 via-transparent to-primary/5 opacity-60 group-hover:opacity-100 transition-opacity" />
-              <AppLogo size={42} variant="shield" />
-            </div>
-            <span className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-emerald-500 border-2 border-background shadow-sm" />
+          <div className="relative flex items-center justify-center group mb-1">
+            <AppLogo
+              size={54}
+              variant="shield"
+              className="drop-shadow-[0_4px_24px_rgba(212,175,55,0.3)] transition-transform duration-300 group-hover:scale-105"
+            />
           </div>
 
           <h1 className="text-2xl sm:text-3xl font-semibold text-foreground tracking-tight leading-tight">
