@@ -2,7 +2,26 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Plus, MessageSquare, Folder, Cpu, Palette, Sun, Moon, ChevronDown, Trash2, Pencil, Check, X, PanelLeftClose, Download, Search, Settings, Mic, Calendar, Wrench } from 'lucide-react';
+import {
+  Plus,
+  MessageSquare,
+  Folder,
+  CalendarClock,
+  LayoutGrid,
+  Wrench,
+  Mic,
+  Sun,
+  Moon,
+  ChevronDown,
+  Trash2,
+  Pencil,
+  Check,
+  X,
+  PanelLeftClose,
+  Download,
+  Search,
+  Settings,
+} from 'lucide-react';
 import { Conversation, ConversationGroup } from '../types/chat';
 import AppLogo from '@/components/ui/AppLogo';
 
@@ -147,28 +166,28 @@ export default function Sidebar({
               onClick={() => router.push('/chat-history-folders')}
               className="flex items-center gap-2.5 w-full px-3 py-2 rounded-lg text-sm text-muted-foreground hover:text-foreground hover:bg-sidebar-hover transition-all duration-150 group"
             >
-              <Folder size={15} className="flex-shrink-0 text-amber-500/80" />
+              <Folder size={17} strokeWidth={1.8} className="flex-shrink-0 text-muted-foreground group-hover:text-foreground transition-colors" />
               <span className="flex-1 text-left">Folders & Projects</span>
             </button>
             <button
               onClick={() => router.push('/tasks')}
               className="flex items-center gap-2.5 w-full px-3 py-2 rounded-lg text-sm text-muted-foreground hover:text-foreground hover:bg-sidebar-hover transition-all duration-150 group"
             >
-              <Calendar size={15} className="flex-shrink-0 text-blue-500/80" />
+              <CalendarClock size={17} strokeWidth={1.8} className="flex-shrink-0 text-muted-foreground group-hover:text-foreground transition-colors" />
               <span className="flex-1 text-left">Scheduled Tasks</span>
             </button>
             <button
               onClick={onOpenArtifacts}
               className="flex items-center gap-2.5 w-full px-3 py-2 rounded-lg text-sm text-muted-foreground hover:text-foreground hover:bg-sidebar-hover transition-all duration-150 group"
             >
-              <Cpu size={15} className="flex-shrink-0 text-purple-500/80" />
+              <LayoutGrid size={17} strokeWidth={1.8} className="flex-shrink-0 text-muted-foreground group-hover:text-foreground transition-colors" />
               <span className="flex-1 text-left">Artifacts Panel</span>
             </button>
             <button
               onClick={onOpenTools}
               className="flex items-center gap-2.5 w-full px-3 py-2 rounded-lg text-sm text-muted-foreground hover:text-foreground hover:bg-sidebar-hover transition-all duration-150 group"
             >
-              <Wrench size={15} className="flex-shrink-0 text-emerald-500/80" />
+              <Wrench size={17} strokeWidth={1.8} className="flex-shrink-0 text-muted-foreground group-hover:text-foreground transition-colors" />
               <span className="flex-1 text-left">Tools & Skills</span>
               <span className="text-[0.625rem] px-1.5 py-0.5 rounded-md bg-primary/15 text-primary font-semibold tracking-wide uppercase">
                 Active
@@ -178,7 +197,7 @@ export default function Sidebar({
               onClick={onOpenVoice}
               className="flex items-center gap-2.5 w-full px-3 py-2 rounded-lg text-sm text-muted-foreground hover:text-foreground hover:bg-sidebar-hover transition-all duration-150 group"
             >
-              <Mic size={15} className="flex-shrink-0 text-rose-500/80" />
+              <Mic size={17} strokeWidth={1.8} className="flex-shrink-0 text-muted-foreground group-hover:text-foreground transition-colors" />
               <span className="flex-1 text-left">Voice Assistant</span>
             </button>
           </div>

@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { Menu } from 'lucide-react';
 import Sidebar from './Sidebar';
+import AppLogo from './ui/AppLogo';
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -32,7 +33,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           >
             <Menu size={18} />
           </button>
-          <span className="ml-2 font-semibold text-sm text-foreground">ChatFlow</span>
+          <div className="ml-2 flex items-center gap-1.5">
+            <AppLogo size={20} variant="shield" />
+            <span className="font-bold text-sm text-foreground">Pragna</span>
+          </div>
         </div>
         <main className="flex-1 min-w-0 overflow-hidden flex flex-col">{children}</main>
       </div>

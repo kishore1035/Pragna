@@ -8,22 +8,22 @@ import { useChat } from '@/context/ChatContext';
 import { useAuth } from '@/context/AuthContext';
 import {
   MessageSquare,
-  FolderOpen,
+  Folder,
   Settings,
   ChevronLeft,
   ChevronRight,
   Plus,
   Search,
+  CalendarClock,
   Clock,
   Zap,
-  Calendar,
   Trash2,
 } from 'lucide-react';
 
 const navItems = [
   { key: 'nav-chat', href: '/', icon: MessageSquare, label: 'Chat', showCount: false },
-  { key: 'nav-tasks', href: '/tasks', icon: Calendar, label: 'Scheduled Tasks', showCount: false },
-  { key: 'nav-history', href: '/chat-history-folders', icon: FolderOpen, label: 'History', showCount: true },
+  { key: 'nav-tasks', href: '/tasks', icon: CalendarClock, label: 'Scheduled Tasks', showCount: false },
+  { key: 'nav-history', href: '/chat-history-folders', icon: Folder, label: 'Folders & Projects', showCount: true },
   { key: 'nav-settings', href: '/settings', icon: Settings, label: 'Settings', showCount: false },
 ];
 
@@ -165,7 +165,7 @@ export default function Sidebar({ onNavigate }: SidebarProps) {
               } ${collapsed ? 'justify-center' : ''}`}
               title={collapsed ? item.label : undefined}
             >
-              <item.icon size={18} />
+              <item.icon size={17} strokeWidth={1.8} className="shrink-0" />
               {!collapsed && <span className="flex-1">{item.label}</span>}
               {!collapsed && item.showCount && !searchQuery && conversations.length > 0 && (
                 <span className="text-xs bg-muted text-muted-foreground rounded-full px-1.5 py-0.5 font-mono-data">
@@ -184,7 +184,7 @@ export default function Sidebar({ onNavigate }: SidebarProps) {
           <div>
             <div className="flex items-center justify-between px-2 mb-2">
               <div className="flex items-center gap-1.5">
-                <Calendar size={12} className="text-primary" />
+                <CalendarClock size={13} strokeWidth={1.8} className="text-primary" />
                 <span className="text-xs font-semibold text-primary uppercase tracking-wider">
                   Scheduled Tasks
                 </span>

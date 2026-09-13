@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useRef, useEffect, useState, useCallback } from 'react';
-import { PanelLeftOpen, Share2, ChevronDown, ArrowDown, Mic, Code2, Wrench, Search } from 'lucide-react';
+import { PanelLeftOpen, Share2, ChevronDown, ArrowDown, Mic, Code2, LayoutGrid, Wrench, Search } from 'lucide-react';
 import { Conversation, ModelOption } from '../types/chat';
 import MessageList from './MessageList';
 import ChatInput from './ChatInput';
@@ -155,7 +155,7 @@ export default function ChatWindow({
               }`}
               title="Toggle Artifacts Side Panel"
             >
-              <Code2 size={14} />
+              <LayoutGrid size={14} />
             </button>
           )}
 
