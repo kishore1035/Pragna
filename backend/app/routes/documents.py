@@ -7,7 +7,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from app import repository
 from app.rag import ingest_file
-from app.auth import get_current_user
+from app.auth import get_optional_current_user
 
 ALLOWED_EXTENSIONS = {".pdf", ".txt", ".md", ".docx", ".xlsx", ".pptx", ".csv"}
 
@@ -24,29 +24,32 @@ class DocumentGenerateRequest(BaseModel):
 
 @router.post("/api/documents/upload")
 async def upload_document(
-    request: Request, file: UploadFile = File(...), current_user: dict = Depends(get_current_user)
+    request: Request, file: UploadFile = File(...), current_user: dict = Depends(get_optional_current_user)
 ):
     suffix = Path(file.filename).suffix.lower()
     if suffix not in ALLOWED_EXTENSIONS:
-        raise HTTPException(status_code=400, detail=f"Unsupported file type: {suffix}")
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported file type '{suffix}'. Allowed: {', '.join(sorted(ALLOWED_EXTENSIONS))}",
+        )
 
     settings = request.app.state.settings
-    documents_dir = Path(settings.documents_dir)
-    documents_dir.mkdir(parents=True, exist_ok=True)
-    destination = documents_dir / file.filename
-    destination.write_bytes(await file.read())
+    dest_dir = Path(settings.documents_dir)
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    destination = dest_dir / file.filename
+
+    content = await file.read()
+    with open(destination, "wb") as f:
+        f.write(content)
 
     conn = request.app.state.conn
     existing = repository.get_document_by_filename(conn, file.filename)
     if existing:
         document_id = existing["id"]
-        try:
-            request.app.state.collection.delete(where={"document_id": document_id})
-        except Exception:
-            pass
-        repository.update_document_ingested_at(conn, document_id)
     else:
-        document_id = repository.create_document_record(conn, file.filename, "upload", 0)
+        document_id = repository.create_document_record(
+            conn, file.filename, "upload", len(content)
+        )
 
     chunk_count = await ingest_file(
         destination,
@@ -61,14 +64,15 @@ async def upload_document(
 
 
 @router.get("/api/documents")
-async def list_documents(request: Request, current_user: dict = Depends(get_current_user)):
+async def list_documents(request: Request, current_user: dict = Depends(get_optional_current_user)):
     return repository.list_documents(request.app.state.conn)
 
 
 @router.delete("/api/documents/{document_id}")
 async def delete_document(
-    document_id: int, request: Request, current_user: dict = Depends(get_current_user)
+    document_id: int, request: Request, current_user: dict = Depends(get_optional_current_user)
 ):
+
     conn = request.app.state.conn
     doc = repository.get_document_by_id(conn, document_id)
     if not doc:

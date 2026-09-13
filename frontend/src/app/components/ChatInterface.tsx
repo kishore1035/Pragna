@@ -247,7 +247,13 @@ export default function ChatInterface() {
       }
 
       if (typeof window !== 'undefined') {
-        const nameMatch = content.match(/\b(?:my name is|i am|call me|i'm)\s+([A-Za-z]{2,20})\b/i);
+        const nickMatch = content.match(/\b(?:my nickname is|nickname is|my nick is|call me nickname)\s+["']?([A-Za-z0-9_-]{2,30})["']?\b/i);
+        if (nickMatch) {
+          const formatted = nickMatch[1].trim();
+          localStorage.setItem('claudechat_user_nickname', formatted.charAt(0).toUpperCase() + formatted.slice(1));
+        }
+
+        const nameMatch = content.match(/\b(?:my name is|i am|i'm)\s+([A-Za-z]{2,20})\b/i);
         if (nameMatch) {
           const candidate = nameMatch[1].trim();
           const invalid = ['a', 'an', 'the', 'here', 'just', 'trying', 'working', 'looking', 'sorry', 'fine', 'good', 'happy', 'busy', 'online', 'curious', 'not', 'asking', 'thinking', 'pragna', 'claude', 'assistant', 'bot'];
@@ -259,6 +265,7 @@ export default function ChatInterface() {
       }
 
       const clientUserName = typeof window !== 'undefined' ? localStorage.getItem('claudechat_user_name') || 'Vinay' : 'Vinay';
+      const clientUserNickname = typeof window !== 'undefined' ? localStorage.getItem('claudechat_user_nickname') || undefined : undefined;
 
       const response = await fetch('/api/chat', {
         method: 'POST',
@@ -269,8 +276,10 @@ export default function ChatInterface() {
           apiKey: customKey || undefined,
           systemPrompt: customPrompt || undefined,
           userName: clientUserName,
+          userNickname: clientUserNickname,
         }),
       });
+
 
       if (response.ok && response.body) {
         const reader = response.body.getReader();

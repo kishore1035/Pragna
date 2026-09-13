@@ -41,5 +41,49 @@ const nextConfig = {
     }
     return config;
   },
+  async rewrites() {
+    return [
+      {
+        source: '/api/conversations/:path*',
+        destination: 'http://localhost:8000/api/conversations/:path*',
+      },
+      {
+        source: '/api/documents/:path*',
+        destination: 'http://localhost:8000/api/documents/:path*',
+      },
+      {
+        source: '/api/memories/:path*',
+        destination: 'http://localhost:8000/api/memories/:path*',
+      },
+      {
+        source: '/api/voice/:path*',
+        destination: 'http://localhost:8000/api/voice/:path*',
+      },
+      {
+        source: '/api/artifacts/:path*',
+        destination: 'http://localhost:8000/api/artifacts/:path*',
+      },
+      {
+        source: '/api/tools/:path*',
+        destination: 'http://localhost:8000/api/tools/:path*',
+      },
+      {
+        source: '/api/system/:path*',
+        destination: 'http://localhost:8000/api/system/:path*',
+      },
+      {
+        source: '/api/agent/:path*',
+        destination: 'http://localhost:8000/api/agent/:path*',
+      },
+      {
+        source: '/api/messages/:path*',
+        destination: 'http://localhost:8000/api/messages/:path*',
+      },
+      {
+        source: '/api/auth/:path*',
+        destination: 'http://localhost:8000/api/auth/:path*',
+      },
+    ];
+  },
 };
 export default nextConfig;

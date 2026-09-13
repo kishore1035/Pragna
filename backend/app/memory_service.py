@@ -36,7 +36,18 @@ async def extract_and_save_memory(
     if not user_message:
         return None
 
-    # Immediate deterministic extraction for high-confidence identity facts (e.g. name)
+    # Immediate deterministic extraction for high-confidence identity facts (e.g. name, nickname)
+    nick_match = re.search(r"\b(?:my nickname is|nickname is|my nick is)\s+([A-Za-z0-9_-]+)\b", user_message, re.IGNORECASE)
+    if nick_match:
+        cand_nick = nick_match.group(1).strip()
+        fact = f"User's nickname is {cand_nick.capitalize()}."
+        try:
+            existing = [m.get("content") for m in repository.list_memories(conn)]
+            if fact not in existing:
+                repository.create_memory(conn, fact, source_conversation_id=conversation_id)
+        except Exception as e:
+            logger.warning(f"Immediate nickname persistence warning: {e}")
+
     name_match = re.search(r"\b(?:my name is|i am|call me|i'm)\s+([A-Za-z]+)\b", user_message, re.IGNORECASE)
     if name_match:
         cand_name = name_match.group(1).strip()
@@ -58,6 +69,7 @@ async def extract_and_save_memory(
                     conn.commit()
             except Exception as e:
                 logger.warning(f"Immediate name persistence warning: {e}")
+
 
     if not assistant_message:
         return None

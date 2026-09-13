@@ -67,46 +67,118 @@ function queryNeedsTools(messages: any[]): boolean {
   return triggers.some(t => last.includes(t));
 }
 
-function getPersistentMemories(customUserName?: string): { userName: string; promptBlock: string } {
-  const filePath = path.join(process.cwd(), 'data', 'memories.json');
+function getMemoryFilePaths(): string[] {
+  const baseDir = process.cwd().endsWith('frontend')
+    ? process.cwd()
+    : path.join(process.cwd(), 'frontend');
+  return [path.join(baseDir, 'data', 'memories.json')];
+}
+
+async function getPersistentMemories(customUserName?: string, customUserNickname?: string): Promise<{ userName: string; userNickname: string; promptBlock: string }> {
   let userName = customUserName || 'Vinay';
+  let userNickname = customUserNickname || '';
   let memories: string[] = ["User's name is Vinay.", "User is creator and engineer at EtherX Innovations."];
 
-  try {
-    if (fs.existsSync(filePath)) {
-      const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
-      if (data.userName) userName = customUserName || data.userName;
-      if (Array.isArray(data.memories) && data.memories.length > 0) memories = data.memories;
+  for (const filePath of getMemoryFilePaths()) {
+    try {
+      if (fs.existsSync(filePath)) {
+        const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+        if (data.userName) userName = customUserName || data.userName;
+        if (data.userNickname) userNickname = customUserNickname || data.userNickname;
+        if (Array.isArray(data.memories) && data.memories.length > 0) {
+          for (const m of data.memories) {
+            if (!memories.includes(m)) memories.push(m);
+          }
+        }
+        break;
+      }
+    } catch (e) {
+      console.error('Error loading memories file:', filePath, e);
     }
-  } catch (e) {
-    console.error('Error loading memories.json:', e);
+  }
+
+  // Also query backend SQLite memories if running
+  try {
+    const res = await fetch('http://localhost:8000/api/memories', {
+      headers: { 'Content-Type': 'application/json' },
+      signal: AbortSignal.timeout(600),
+    });
+    if (res.ok) {
+      const backendMemories = await res.json();
+      if (Array.isArray(backendMemories)) {
+        for (const item of backendMemories) {
+          if (item.content && !memories.includes(item.content)) {
+            memories.push(item.content);
+          }
+        }
+      }
+    }
+  } catch {}
+
+  // Check if memories array has a nickname fact
+  for (const m of memories) {
+    const nickMatch = m.match(/User's nickname is\s+([^.]+)/i);
+    if (nickMatch && !userNickname) {
+      userNickname = nickMatch[1].trim();
+    }
   }
 
   const memoryLines = memories.map(m => `  • ${m}`).join('\n');
   const promptBlock = `\n\nUSER IDENTITY & PERSISTENT MEMORY (Always active across all conversations & tabs):
 - User's Name: ${userName}
-- CRITICAL: You are conversing with ${userName}. When the user asks "what's my name", "whats my name", or asks who they are, you must ALWAYS state directly and accurately that their name is ${userName}.
-- NEVER confuse your name (Pragna) with the user's name (${userName}). You are Pragna; the user is ${userName}.
-- Durable facts you remember about ${userName}:
-${memoryLines}`;
+${userNickname ? `- User's Nickname: ${userNickname}` : ''}
+- CRITICAL INSTRUCTIONS REGARDING USER IDENTITY & MEMORY:
+  1. User's Legal/Given Name: ${userName}. When the user asks "what's my name", "whats my name", or asks who they are, you must ALWAYS state directly and accurately that their name is ${userName}.
+  2. User's Nickname: ${userNickname ? `The user's established nickname is strictly "${userNickname}". When asked "what's my nickname" or "whats my nickname", state "${userNickname}" directly and accurately. Do NOT invent, assume, or suggest generic nicknames (such as "Vinny") when "${userNickname}" is on record.` : 'Check the durable facts below. If a nickname is recorded, state that exact nickname.'}
+  3. Durable facts you remember about ${userName}:
+${memoryLines}
+  4. NEVER confuse your name (Pragna) with the user's name (${userName}). You are Pragna; the user is ${userName}.`;
 
-  return { userName, promptBlock };
+  return { userName, userNickname, promptBlock };
 }
 
 function updateMemoriesFromMessage(content: string) {
   if (!content) return;
-  const filePath = path.join(process.cwd(), 'data', 'memories.json');
-  let data = { userName: 'Vinay', memories: ["User's name is Vinay.", "User is creator and engineer at EtherX Innovations."] };
+  const targetPaths = getMemoryFilePaths();
+  let data = {
+    userName: 'Vinay',
+    userNickname: '',
+    memories: ["User's name is Vinay.", "User is creator and engineer at EtherX Innovations."]
+  };
 
-  try {
-    if (fs.existsSync(filePath)) {
-      data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
-    }
-  } catch (e) {}
+  for (const filePath of targetPaths) {
+    try {
+      if (fs.existsSync(filePath)) {
+        const loaded = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+        data = { ...data, ...loaded };
+        if (Array.isArray(loaded.memories)) data.memories = loaded.memories;
+        break;
+      }
+    } catch (e) {}
+  }
 
   let changed = false;
+  const newFactsToSync: string[] = [];
+
+  // Check for nickname extraction
+  const nickMatch = content.match(/\b(?:my nickname is|nickname is|my nick is|call me nickname|call me)\s+["']?([A-Za-z0-9_-]{2,30})["']?\b/i);
+  if (nickMatch) {
+    const candidate = nickMatch[1].trim();
+    const invalid = ['a', 'an', 'the', 'here', 'just', 'trying', 'working', 'looking', 'sorry', 'fine', 'good', 'happy', 'busy', 'online', 'curious', 'not', 'asking', 'thinking', 'pragna', 'claude', 'assistant', 'bot', 'vinay'];
+    if (!invalid.includes(candidate.toLowerCase())) {
+      const formatted = candidate.charAt(0).toUpperCase() + candidate.slice(1);
+      data.userNickname = formatted;
+      const fact = `User's nickname is ${formatted}.`;
+      if (!data.memories.includes(fact)) {
+        data.memories.unshift(fact);
+        newFactsToSync.push(fact);
+      }
+      changed = true;
+    }
+  }
+
   // Check for name extraction
-  const nameMatch = content.match(/\b(?:my name is|i am|call me|i'm)\s+([A-Za-z]{2,20})\b/i);
+  const nameMatch = content.match(/\b(?:my name is|i am|i'm)\s+([A-Za-z]{2,20})\b/i);
   if (nameMatch) {
     const candidate = nameMatch[1].trim();
     const invalid = ['a', 'an', 'the', 'here', 'just', 'trying', 'working', 'looking', 'sorry', 'fine', 'good', 'happy', 'busy', 'online', 'curious', 'not', 'asking', 'thinking', 'pragna', 'claude', 'assistant', 'bot'];
@@ -116,29 +188,54 @@ function updateMemoriesFromMessage(content: string) {
       const fact = `User's name is ${formatted}.`;
       if (!data.memories.includes(fact)) {
         data.memories.unshift(fact);
+        newFactsToSync.push(fact);
       }
       changed = true;
     }
   }
 
   // Check for remember directives
-  const remMatch = content.match(/\b(?:remember that|please remember|note that|keep in mind that)\s+(.{4,100})/i);
+  const remMatch = content.match(/\b(?:remember that|please remember|note that|keep in mind that)\s+(.{4,120})/i);
   if (remMatch) {
     const fact = remMatch[1].trim().replace(/[.!?]+$/, '');
     const entry = `User note: ${fact}.`;
     if (!data.memories.includes(entry)) {
       data.memories.push(entry);
+      newFactsToSync.push(entry);
+      changed = true;
+    }
+  }
+
+  // Check for preferences
+  const prefMatch = content.match(/\b(?:i live in|i am from|i'm from)\s+([^.,\n!]{2,50})/i);
+  if (prefMatch) {
+    const place = prefMatch[1].trim();
+    const entry = `User is from ${place}.`;
+    if (!data.memories.includes(entry)) {
+      data.memories.push(entry);
+      newFactsToSync.push(entry);
       changed = true;
     }
   }
 
   if (changed) {
-    try {
-      const dir = path.dirname(filePath);
-      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-      fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf-8');
-    } catch (e) {
-      console.error('Error saving memories.json:', e);
+    for (const filePath of targetPaths) {
+      try {
+        const dir = path.dirname(filePath);
+        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+        fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf-8');
+      } catch (e) {
+        console.error('Error saving memories.json to', filePath, e);
+      }
+    }
+
+    // Sync new facts to backend SQLite asynchronously
+    for (const fact of newFactsToSync) {
+      fetch('http://localhost:8000/api/memories', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: fact }),
+      }).catch(() => {});
     }
   }
 }
@@ -177,9 +274,10 @@ export async function POST(req: NextRequest) {
     updateMemoriesFromMessage(lastUserMessage);
 
     // Retrieve active persistent memories and inject into system prompt
-    const { promptBlock } = getPersistentMemories(clientUserName);
+    const { promptBlock } = await getPersistentMemories(clientUserName, body.userNickname);
     const baseSystemPrompt = customSystemPrompt || SYSTEM_PROMPT;
     const fullSystemPrompt = `${baseSystemPrompt}${promptBlock}`;
+
 
     let targetModel = MODEL_MAP[model] || model;
 
