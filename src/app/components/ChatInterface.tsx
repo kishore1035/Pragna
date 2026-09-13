@@ -319,24 +319,22 @@ export default function ChatInterface() {
       console.error('Streaming error from /api/chat:', err);
     }
 
-    // If no stream tokens received (e.g. offline or fallback needed)
+    // If no stream tokens received (e.g. backend error or network failure)
     if (!streamedAny) {
-      await simulateStream(content, (token) => {
-        setConversations(prev => {
-          const updated = prev.map(c => {
-            if (c.id !== convId) return c;
-            return {
-              ...c,
-              messages: c.messages.map(m =>
-                m.id === assistantMessageId
-                  ? { ...m, content: m.content + token, isStreaming: true }
-                  : m
-              ),
-            };
-          });
-          saveConversations(updated);
-          return updated;
+      setConversations(prev => {
+        const updated = prev.map(c => {
+          if (c.id !== convId) return c;
+          return {
+            ...c,
+            messages: c.messages.map(m =>
+              m.id === assistantMessageId
+                ? { ...m, content: "Could not connect to the backend AI service. Please verify the backend is running or use http://localhost:5185.", isStreaming: false }
+                : m
+            ),
+          };
         });
+        saveConversations(updated);
+        return updated;
       });
     }
 
@@ -452,154 +450,4 @@ export default function ChatInterface() {
       )}
     </div>
   );
-}
-
-// Simulated streaming responses with realistic AI-style content
-async function simulateStream(userInput: string, onToken: (token: string) => void): Promise<void> {
-  const responses = getMockResponse(userInput);
-  const tokens = responses.split('');
-  
-  // Simulate thinking delay
-  await new Promise(r => setTimeout(r, 400 + Math.floor(tokens.length * 0.1)));
-
-  for (let i = 0; i < tokens.length; i++) {
-    await new Promise(r => setTimeout(r, 8 + (tokens[i] === ' ' ? 2 : 0)));
-    onToken(tokens[i]);
-  }
-}
-
-function getMockResponse(input: string): string {
-  const lower = input.toLowerCase();
-
-  if (lower.includes('code') || lower.includes('function') || lower.includes('javascript') || lower.includes('python') || lower.includes('typescript')) {
-    return `Here's a clean implementation for that:
-
-\`\`\`typescript
-interface ApiResponse<T> {
-  data: T;
-  status: number;
-  message: string;
-}
-
-async function fetchWithRetry<T>(
-  url: string,
-  options?: RequestInit,
-  retries = 3
-): Promise<ApiResponse<T>> {
-  for (let attempt = 1; attempt <= retries; attempt++) {
-    try {
-      const response = await fetch(url, options);
-      
-      if (!response.ok) {
-        throw new Error(\`HTTP \${response.status}: \${response.statusText}\`);
-      }
-      
-      const data = await response.json();
-      return { data, status: response.status, message: 'Success' };
-    } catch (error) {
-      if (attempt === retries) throw error;
-      // Exponential backoff: 1s, 2s, 4s
-      await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt - 1)));
-    }
-  }
-  throw new Error('Max retries exceeded');
-}
-\`\`\`
-
-**Key design decisions:**
-
-1. **Generic type parameter** \`T\` makes it reusable across different response shapes
-2. **Exponential backoff** prevents hammering the server on transient failures
-3. **Structured return type** gives callers consistent access to status and data
-4. **Re-throws on final attempt** so callers can handle the failure appropriately
-
-You can extend this with request cancellation using \`AbortController\` if you need timeout support.`;
-  }
-
-  if (lower.includes('explain') || lower.includes('what is') || lower.includes('how does')) {
-    return `Great question. Let me break this down clearly.
-
-## The Core Concept
-
-At its heart, this is about understanding how **systems communicate** under uncertainty. There are three layers to consider:
-
-### 1. The Signal Layer
-This is where raw information travels — bytes, packets, tokens. The signal doesn't care about meaning; it just moves data from point A to point B.
-
-### 2. The Interpretation Layer
-Here's where things get interesting. The receiver must *decode* the signal and assign meaning. This requires:
-- A shared **schema** or protocol
-- Sufficient **context** to resolve ambiguity
-- Error-correction when the signal degrades
-
-### 3. The Action Layer
-Finally, the interpreted meaning triggers a response. This response feeds back into the system, creating a loop.
-
-> The most common failure mode isn't at the signal layer — it's at the interpretation layer, where two parties think they're speaking the same language but aren't.
-
-**Practical implication:** Always validate your assumptions about shared context before assuming communication succeeded.`;
-  }
-
-  if (lower.includes('list') || lower.includes('best') || lower.includes('top') || lower.includes('recommend')) {
-    return `Here are my top recommendations, ordered by impact:
-
-## Tier 1: High Impact, Low Effort
-
-1. **Start with the 80/20 rule** — Identify the 20% of work that produces 80% of results. Most people spend equal time on everything; ruthless prioritization is a superpower.
-
-2. **Batch context-switching** — Every switch between tasks costs ~15 minutes of recovery time. Group similar work into blocks rather than mixing deep work with messages.
-
-3. **Write things down immediately** — Working memory holds ~4 items at once. Offload to a trusted system the moment a thought arrives.
-
-## Tier 2: High Impact, Higher Effort
-
-4. **Build feedback loops** — The faster you get signal on whether something is working, the faster you can correct. This applies to code, writing, strategy, and relationships.
-
-5. **Invest in your tools** — A developer who spends 2 hours learning their editor saves 10 minutes a day — that's a 4-day payback period. Compound this across years. 6. **Teach what you learn** — The act of explaining something reveals every gap in your understanding. It's the most efficient form of self-assessment.
-
-## Tier 3: Compounding Over Time
-
-7. **Build in public** — Sharing work-in-progress creates accountability, attracts collaborators, and generates feedback you'd never get otherwise.
-
-8. **Maintain a decision log** — Record why you made key decisions. Future-you will thank present-you when reviewing what was known at the time.
-
-Want me to go deeper on any of these?`;
-  }
-
-  if (lower.includes('help') || lower.includes('stuck') || lower.includes('problem') || lower.includes('issue')) {
-    return `I'm here to help. Let's work through this systematically.
-
-**First, let's clarify the situation:**
-
-When you're stuck, it usually falls into one of three categories:
-
-| Type | Symptoms | Approach |
-|------|----------|----------|
-| **Knowledge gap** | "I don't know how to do X" | Research, examples, documentation |
-| **Decision paralysis** | "I know the options but can't choose" | Criteria matrix, reversibility check |
-| **Execution block** | "I know what to do but can't start" | Time-box, reduce scope, change environment |
-
-**My suggestion:** Describe the specific point where you're blocked — the more concrete, the better. Include: 1. What you're trying to achieve
-2. What you've already tried
-3. Where exactly things break down or feel unclear
-
-The more precise the problem statement, the more useful my response will be. Vague questions get vague answers — let's make this concrete.`;
-  }
-
-  // Default thoughtful response
-  return `That's a thoughtful prompt. Here's how I'd approach it:
-
-The key insight is that most complex questions have **a simple frame and a complicated interior**. Finding the right frame is usually 80% of the work.
-
-In this case, I'd suggest thinking about it along two axes:
-
-**Axis 1: What you can control**
-Focus your energy here. Systems, habits, decisions, responses — these are within your sphere of influence. Optimizing things outside this sphere is usually wasted effort.
-
-**Axis 2: What matters in the long run**
-Many things feel urgent but aren't important. The reverse — important but not urgent — is where most high-leverage work lives. Protecting time for non-urgent important work is one of the hardest and most valuable skills to develop.
-
-Where these two axes intersect — things you control *and* that matter long-term — is where to direct sustained attention.
-
-Is there a specific aspect of this you'd like me to explore further? I can go deeper on any part of this, provide concrete examples, or help you apply the framework to your specific situation.`;
 }

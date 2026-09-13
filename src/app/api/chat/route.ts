@@ -231,6 +231,34 @@ export async function POST(req: NextRequest) {
           }
         };
 
+        const pipeOllamaStream = async (res: Response) => {
+          if (!res.body) return;
+          const reader = res.body.getReader();
+          const decoder = new TextDecoder();
+          let buffer = '';
+
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop() || '';
+
+            for (const line of lines) {
+              const trimmed = line.trim();
+              if (!trimmed) continue;
+              try {
+                const data = JSON.parse(trimmed);
+                const token = data.message?.content || '';
+                if (token) {
+                  sendText(token);
+                }
+                if (data.done) break;
+              } catch {}
+            }
+          }
+        };
+
         try {
           let activeModel = targetModel;
 
@@ -248,7 +276,7 @@ export async function POST(req: NextRequest) {
                 model: activeModel,
                 messages: conversationHistory,
                 temperature,
-                max_tokens: 2000,
+                max_tokens: 1000,
                 stream: true,
               }),
             });
@@ -267,7 +295,7 @@ export async function POST(req: NextRequest) {
                   model: activeModel,
                   messages: conversationHistory,
                   temperature,
-                  max_tokens: 2000,
+                  max_tokens: 1000,
                   stream: true,
                 }),
               });
@@ -275,6 +303,28 @@ export async function POST(req: NextRequest) {
 
             if (directRes.ok) {
               await pipeStream(directRes);
+              controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+              controller.close();
+              return;
+            }
+
+            // Fallback: Ollama Cloud
+            const ollamaKey = process.env.OLLAMA_API_KEY || '26a95f0c5431431d8338645cdde4998f.CyDoeN4fDrSTJum8dpfRglps';
+            const ollamaRes = await fetch('https://api.ollama.com/api/chat', {
+              method: 'POST',
+              headers: {
+                Authorization: `Bearer ${ollamaKey}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                model: 'gemma4:cloud',
+                messages: conversationHistory.map(m => ({ role: m.role, content: m.content })),
+                stream: true,
+              }),
+            });
+
+            if (ollamaRes.ok) {
+              await pipeOllamaStream(ollamaRes);
               controller.enqueue(encoder.encode('data: [DONE]\n\n'));
               controller.close();
               return;
