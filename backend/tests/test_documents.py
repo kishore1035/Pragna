@@ -34,7 +34,7 @@ def test_startup_ingests_existing_folder_files(tmp_path):
 
     settings = Settings(
         _env_file=None,
-        db_path=str(tmp_path / "mimir.db"),
+        db_path=str(tmp_path / "pragna.db"),
         chroma_path=str(tmp_path / "chroma"),
         documents_dir=str(documents_dir),
         jwt_secret="test-secret-not-for-production",

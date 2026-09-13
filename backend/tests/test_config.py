@@ -10,6 +10,7 @@ def test_settings_defaults(monkeypatch):
     assert settings.chat_model == "gemma4:cloud"
     assert settings.embed_model == "nomic-embed-text"
     assert settings.rag_similarity_threshold == 0.5
+    assert settings.db_path == "data/pragna.db"
 
 
 def test_settings_override(monkeypatch):
