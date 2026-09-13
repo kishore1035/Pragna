@@ -238,6 +238,11 @@ export default function ChatInterface() {
       history.push({ role: 'user', content });
 
       const customKey = typeof window !== 'undefined' ? localStorage.getItem('claudechat_custom_api_key') : null;
+      let customPrompt = typeof window !== 'undefined' ? localStorage.getItem('claudechat_system_prompt') : null;
+      if (customPrompt && (customPrompt.includes('Claude') || customPrompt.includes('Anthropic') || customPrompt.includes('helpful AI assistant.'))) {
+        localStorage.removeItem('claudechat_system_prompt');
+        customPrompt = null;
+      }
 
       const response = await fetch('/api/chat', {
         method: 'POST',
@@ -246,6 +251,7 @@ export default function ChatInterface() {
           messages: history,
           model: selectedModel.id,
           apiKey: customKey || undefined,
+          systemPrompt: customPrompt || undefined,
         }),
       });
 

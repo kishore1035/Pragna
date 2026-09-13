@@ -70,9 +70,10 @@ export default function ModelsSettings() {
   const [keySaved, setKeySaved] = useState(false);
   const [temperature, setTemperature] = useState('0.7');
   const [maxTokens, setMaxTokens] = useState('4000');
-  const [systemPrompt, setSystemPrompt] = useState(
-    'You are Pragna, a thoughtful, articulate, and helpful AI assistant. When generating code, HTML, React components, SVGs, or technical documents, produce clean, well-structured, production-quality code with markdown syntax.'
-  );
+  const DEFAULT_PRAGNA_PROMPT =
+    'You are Pragna, an intelligent, articulate, and thoughtful AI assistant created by EtherX Innovations within the IgniteX team. Pragna operates across three interfaces: Pragna Chatbot, Pragna Code, and Coword. When generating code, HTML, React components, SVGs, or technical documents, produce clean, well-structured, production-quality code with markdown syntax.';
+
+  const [systemPrompt, setSystemPrompt] = useState(DEFAULT_PRAGNA_PROMPT);
   const [promptSaving, setPromptSaving] = useState(false);
   const [promptSaved, setPromptSaved] = useState(false);
 
@@ -86,7 +87,14 @@ export default function ModelsSettings() {
 
       setCustomApiKey(savedKey);
       setSelectedModel(savedModel);
-      if (savedPrompt) setSystemPrompt(savedPrompt);
+      if (savedPrompt) {
+        if (savedPrompt.includes('Claude') || savedPrompt.includes('Anthropic') || savedPrompt.includes('helpful AI assistant.')) {
+          setSystemPrompt(DEFAULT_PRAGNA_PROMPT);
+          localStorage.setItem('claudechat_system_prompt', DEFAULT_PRAGNA_PROMPT);
+        } else {
+          setSystemPrompt(savedPrompt);
+        }
+      }
       setTemperature(savedTemp);
       setMaxTokens(savedTokens);
     }
