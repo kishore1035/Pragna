@@ -54,6 +54,7 @@ export default function Sidebar({
   theme,
   onToggleTheme,
   onOpenArtifacts,
+  onOpenVoice,
   onOpenTools,
   onOpenSearch,
 }: SidebarProps) {
