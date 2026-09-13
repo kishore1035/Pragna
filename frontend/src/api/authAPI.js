@@ -1,0 +1,111 @@
+import { API_BASE } from "./api";
+
+export const authAPI = {
+  // Register new user (legacy, no email verification - kept for anything
+  // still calling it directly; the sign-up UI uses the OTP flow below)
+  async register(username, email, password) {
+    const response = await fetch(`${API_BASE}/api/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, email, password })
+    });
+    return response.json();
+  },
+
+  // Step 1 of sign-up: validate details, email a 6-digit code. Account
+  // isn't created yet - that happens in verifyRegistrationOtp.
+  async requestRegistrationOtp(username, email, password) {
+    const response = await fetch(`${API_BASE}/api/auth/register/request-otp`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, email, password })
+    });
+    return response.json();
+  },
+
+  // Step 2 of sign-up: check the emailed code and actually create the account.
+  async verifyRegistrationOtp(email, code) {
+    const response = await fetch(`${API_BASE}/api/auth/register/verify-otp`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, code })
+    });
+    return response.json();
+  },
+
+  // Login user
+  async login(username, password) {
+    const response = await fetch(`${API_BASE}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password })
+    });
+    return response.json();
+  },
+
+  // Request a password reset email
+  async forgotPassword(email) {
+    const response = await fetch(`${API_BASE}/api/auth/forgot-password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email })
+    });
+    return response.json();
+  },
+
+  // Complete a password reset using the token from the emailed link
+  async resetPassword(token, newPassword) {
+    const response = await fetch(`${API_BASE}/api/auth/reset-password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token, new_password: newPassword })
+    });
+    return response.json();
+  },
+
+  // Verify token
+  async verifyToken(token) {
+    const response = await fetch(`${API_BASE}/api/auth/verify`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    return response.json();
+  },
+
+  // Get user profile
+  async getProfile(token) {
+    const response = await fetch(`${API_BASE}/api/profile`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    return response.json();
+  },
+
+  // Get all conversations
+  async getConversations(token) {
+    const response = await fetch(`${API_BASE}/api/conversations`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    return response.json();
+  },
+
+  // Token management
+  saveToken(token) {
+    localStorage.setItem('authToken', token);
+  },
+
+  getToken() {
+    return localStorage.getItem('authToken');
+  },
+
+  getUserId() {
+    return localStorage.getItem('userId');
+  },
+
+  logout() {
+    localStorage.removeItem('authToken');
+    localStorage.removeItem('userId');
+  },
+
+  isAuthenticated() {
+    return !!this.getToken();
+  }
+};

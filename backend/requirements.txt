@@ -1,0 +1,14 @@
+fastapi
+uvicorn[standard]
+pydantic-settings
+httpx
+chromadb
+pypdf
+python-multipart
+playwright
+beautifulsoup4
+passlib[bcrypt]
+bcrypt<4.1
+pyjwt
+email-validator
+edge-tts
