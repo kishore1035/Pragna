@@ -896,11 +896,11 @@ export const PromptInput = React.forwardRef<HTMLDivElement, PromptInputProps>(
 
             <div
               ref={topFadeRef}
-              className="absolute left-4 right-12 top-0 z-[2] h-8 bg-gradient-to-b from-card via-card/90 to-transparent pointer-events-none"
+              className="absolute left-4 right-12 top-0 z-[2] h-8 bg-gradient-to-b from-card via-card to-transparent pointer-events-none"
             />
             <div
               ref={bottomFadeRef}
-              className="absolute left-4 right-12 z-[2] h-8 bg-gradient-to-t from-card via-card/90 to-transparent pointer-events-none"
+              className="absolute left-4 right-12 z-[2] h-8 bg-gradient-to-t from-card via-card to-transparent pointer-events-none"
               style={{ 
                 opacity: 0, 
                 top: `${textareaHeight - 32}px`,
