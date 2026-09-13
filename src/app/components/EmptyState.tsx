@@ -52,9 +52,8 @@ export default function EmptyState({
 
   return (
     <div
-      className={`h-full flex flex-col items-center justify-center px-4 transition-all duration-700 ease-out ${
-        visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
-      }`}
+      className={`h-full flex flex-col items-center justify-center px-4 transition-all duration-700 ease-out ${visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
+        }`}
     >
       <div className="w-full max-w-chat flex flex-col items-center gap-6 text-center">
         {/* Pragna Logo & Title */}
@@ -94,11 +93,10 @@ export default function EmptyState({
                     key={lang.id}
                     type="button"
                     onClick={() => onSelectLanguage(lang)}
-                    className={`px-2.5 py-1 rounded-full text-xs font-medium transition-all active:scale-95 ${
-                      isSelected
+                    className={`px-2.5 py-1 rounded-full text-xs font-medium transition-all active:scale-95 ${isSelected
                         ? 'bg-amber-400 text-neutral-950 font-semibold shadow-sm'
                         : 'bg-card/70 hover:bg-muted text-muted-foreground hover:text-foreground border border-border/60'
-                    }`}
+                      }`}
                   >
                     <span>{lang.nativeName}</span>
                   </button>

@@ -1,6 +1,12 @@
 import { NextRequest } from 'next/server';
 import { AGENT_TOOLS_SCHEMA, executeTool } from '@/lib/agent-tools';
 import { buildIndianLanguageSystemPrompt, detectIndianLanguage, INDIAN_LANGUAGES } from '@/lib/indianLanguages';
+import {
+  getModelConfig,
+  isModelIdentityQuery,
+  getModelExplanation,
+  SANSKRIT_MODELS,
+} from '@/lib/modelDisplayNames';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
@@ -119,12 +125,56 @@ export async function POST(req: NextRequest) {
 
     // --- INDIAN LANGUAGE SYSTEM PROMPT ENFORCEMENT ---
     const lastUserContent = messages[messages.length - 1]?.content || user_message || '';
+
+    // --- ACTIVE MODEL IDENTITY & INQUIRY HANDLING ---
+    const modelConfig = getModelConfig(model) || SANSKRIT_MODELS[0];
+    const isModelInquiry = isModelIdentityQuery(lastUserContent);
+
+    if (isModelInquiry) {
+      let respLang = language;
+      if (respLang === 'auto') {
+        const autoDetected = detectIndianLanguage(lastUserContent);
+        respLang = autoDetected.id;
+      }
+      const explanation = getModelExplanation(modelConfig, respLang);
+
+      const stream = new ReadableStream({
+        async start(controller) {
+          const encoder = new TextEncoder();
+          const words = explanation.split(' ');
+          for (let i = 0; i < words.length; i++) {
+            const chunk = (i === 0 ? '' : ' ') + words[i];
+            controller.enqueue(encoder.encode(sseChunk(chunk)));
+            await new Promise((r) => setTimeout(r, 15));
+          }
+          controller.close();
+        },
+      });
+
+      return new Response(stream, {
+        headers: {
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          Connection: 'keep-alive',
+        },
+      });
+    }
+
     const indianLangPrompt = buildIndianLanguageSystemPrompt(language, isVoice);
 
     let effectiveSystemPrompt = customSystemPrompt || DEFAULT_SYSTEM_PROMPT;
     if (!effectiveSystemPrompt.includes('STRICT INDIAN MULTILINGUAL PROJECT')) {
       effectiveSystemPrompt = `${indianLangPrompt}\n\n${effectiveSystemPrompt}`;
     }
+
+    // Inject active model identity into system prompt
+    const activeModelPrompt = `CRITICAL ACTIVE MODEL IDENTITY:
+- You are operating as Pragna under the model persona: "${modelConfig.displayName}" (${modelConfig.sanskritScript} — Sanskrit for "${modelConfig.meaning}").
+- Underlying Architecture: ${modelConfig.rawName} (Provider: ${modelConfig.provider.toUpperCase()}).
+- Core Strengths: ${modelConfig.description}.
+- When asked about your model or system, you must state that you are "${modelConfig.displayName}" (${modelConfig.sanskritScript}), powered by ${modelConfig.rawName}.`;
+
+    effectiveSystemPrompt = `${activeModelPrompt}\n\n${effectiveSystemPrompt}`;
 
     if (language === 'auto') {
       const autoDetected = detectIndianLanguage(lastUserContent);
