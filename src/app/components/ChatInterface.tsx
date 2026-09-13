@@ -330,7 +330,7 @@ export default function ChatInterface() {
             ...c,
             messages: c.messages.map(m =>
               m.id === assistantMessageId
-                ? { ...m, content: "Could not connect to the backend AI service. Please verify the backend is running or use http://localhost:5185.", isStreaming: false }
+                ? { ...m, content: "Could not connect to the AI service. Please verify your connection or try again.", isStreaming: false }
                 : m
             ),
           };
