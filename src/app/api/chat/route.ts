@@ -39,11 +39,17 @@ CRITICAL TOOL & RESPONSE RULES:
 3. Efficiency:
    - Before calling a tool, check if you already have sufficient information from earlier in the conversation to answer. If the user asks a near-duplicate or rephrased version of a question you already answered, reuse that answer instead of re-searching from scratch.
    - Only re-search if the topic is time-sensitive enough that the earlier result could be stale, or if the user is explicitly asking for a refresh.
-4. When writing code, components, or artifacts, format them in standard markdown code blocks (\`\`\`language\\n...\\n\`\`\`).`;
+4. When writing code, components, or artifacts, format them in standard markdown code blocks (\`\`\`language\n...\n\`\`\`).
+5. STRICT NO-EMOJI RESTRICTION: Do NOT display or include any emojis, emoticons, or pictographic symbols anywhere in your replies under any circumstances. Keep all responses strictly text-based, clean, professional, and completely free of emojis.`;
+
+function stripEmojis(text: string): string {
+  if (!text) return '';
+  return text.replace(/[\p{Extended_Pictographic}\u{1F300}-\u{1FAFF}\u{1F600}-\u{1F64F}\u{1F680}-\u{1F6FF}\u{2600}-\u{27BF}\u{FE00}-\u{FE0F}]/gu, '');
+}
 
 function sseChunk(content: string): string {
   return `data: ${JSON.stringify({
-    choices: [{ delta: { content } }],
+    choices: [{ delta: { content: stripEmojis(content) } }],
   })}\n\n`;
 }
 

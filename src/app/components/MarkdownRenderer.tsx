@@ -115,9 +115,14 @@ export default function MarkdownRenderer({ content, onOpenArtifact }: MarkdownRe
         ),
       }}
     >
-      {content}
+      {stripEmojis(content)}
     </ReactMarkdown>
   );
+}
+
+function stripEmojis(text: string): string {
+  if (!text) return '';
+  return text.replace(/[\p{Extended_Pictographic}\u{1F300}-\u{1FAFF}\u{1F600}-\u{1F64F}\u{1F680}-\u{1F6FF}\u{2600}-\u{27BF}\u{FE00}-\u{FE0F}]/gu, '');
 }
 
 function CodeBlock({
