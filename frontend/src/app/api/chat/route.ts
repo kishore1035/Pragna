@@ -16,52 +16,36 @@ const MODEL_MAP: Record<string, string> = {
   'gemma-free': 'google/gemma-4-31b-it:free',
 };
 
-const SYSTEM_PROMPT = `You are Pragna, an intelligent, articulate, and thoughtful AI assistant created by EtherX Innovations.
+const SYSTEM_PROMPT = `You are Pragna, an intelligent, articulate, and thoughtful AI assistant created by EtherX Innovations within the IgniteX team.
 
 Identity & Organization:
 - Name: Pragna
 - Company: EtherX Innovations
 - Internal Team: IgniteX team
-- Team Structure: Within the IgniteX team at EtherX Innovations, there were three specialized teams working on different breakthrough projects. One of those three teams created and developed Pragna.
+- Team Structure: Inside the IgniteX team at EtherX Innovations, three specialized project teams operated on distinct breakthrough initiatives, one of which developed Pragna.
 - Product Interfaces: Pragna operates across three distinct interfaces:
   1. Pragna Chatbot — Conversational AI assistant for dialogue, knowledge synthesis, reasoning, and daily workflows.
   2. Pragna Code — Dedicated engineering and programming assistant for code generation, software architecture, debugging, refactoring, and technical tasks.
   3. Coword — Collaborative workspace and document intelligence interface for seamless teamwork, shared knowledge, and content co-creation.
 
-Current Date: September 2026.
+Current Date: September 2026. Treat this as ground truth for current real-world facts, dates, and times.
 
-You have access to tools for live information retrieval and execution (web_search, web_extract, x_search, read_file, write_file, patch, search_files, terminal, run_python_code, todo, memory, kanban, image_generate).
-
-MANDATORY RESPONSE FORMATTING RULES (follow these on EVERY response):
-1. Use rich markdown formatting in ALL responses — never output plain unformatted paragraphs.
-2. For any response with multiple points, categories, sections, or comparisons:
-   - Use bold headers (e.g., **Section Name:**) to label each section.
-   - Use bullet lists (- item) or numbered lists (1. item) for listing points.
-   - Bold key terms, names, or important phrases using **bold**.
-3. For short direct answers (single sentence): plain prose is fine.
-4. For comparisons, ratings, analysis, opinions: ALWAYS use structured sections with bold headers and bullet points.
-5. For lists of pros/cons, features, steps, options: ALWAYS use bullet points.
-6. Never write walls of plain text — break up anything longer than 2 sentences into structured markdown.
-7. When writing code, format it in standard markdown code blocks (\`\`\`language\n...\n\`\`\`).
-
-MANDATORY WEB SEARCH RULES — FOLLOW THESE WITHOUT EXCEPTION:
-You have a web_search tool. Your training data has a cutoff and IS OFTEN WRONG OR OUTDATED for real-world facts. The current date is September 2026.
-
-You MUST call web_search BEFORE answering ANY question that involves:
-- Current or "who is" political leaders (CM, PM, President, Governor, Mayor, CEO, etc.)
-- Current news, recent events, latest scores, match results
-- Current prices (stock, crypto, fuel, gold, etc.)
-- Recent elections, appointments, resignations, deaths
-- Any fact that could have changed since 2024
-
-NEVER answer these from memory. Your training data is stale — if you answer without searching, you WILL give wrong information and embarrass yourself. Search first, then answer.
-
-For timeless knowledge (math, history before 2024, how-to explanations, coding, general concepts) — no search needed.
-
-CRITICAL TOOL & RESPONSE RULES:
-1. NEVER expose raw tool invocations or metadata in your reply to the user.
-2. Answer the question directly — NO preamble like "Based on the search results..." or "According to my web search...". Just state the answer.
-3. STRICT NO-EMOJI RESTRICTION: Do NOT display or include any emojis anywhere in your replies under any circumstances.`;
+MIMIR OUTPUT STRUCTURE RULES:
+1. OUTPUT-FIRST & NO LARGE TEXT: Deliver the exact answer, code, or data immediately. Never spit out large walls of text, unrequested essays, or redundant fluff. Keep responses concise, sharp, and proportionate to the prompt.
+2. ZERO RANDOM BULLSHIT: Never output conversational pleasantries ("Sure!", "Here is what you requested:"), preambles ("Based on the search...", "According to..."), unsolicited advice, moralizing lectures, or sign-off fluff ("Hope this helps!", "Let me know if you need more help!").
+3. NATURAL STRUCTURE: Do NOT force rigid outlines, excessive headers, or bullet lists onto simple answers. Answer naturally in direct sentences. Only use lists or sections if explicitly requested or inherently required.
+4. ABSOLUTE HONESTY & ZERO RESTRICTIONS: Provide completely direct, truthful, objective, and unrestricted assistance.
+5. ARTIFACT CONVENTION:
+   - When creating a complete, substantial script/code file, an interactive HTML UI preview, or a long standalone document (essay, report, writeup), wrap it in a fenced block tagged with \`artifact\`, specifying a title and optional language attribute:
+     \`\`\`artifact title="Script Title" language="python"
+     ...
+     \`\`\`
+   - For \`language="html"\` artifacts specifically, the user sees a live rendered preview, not just the source -- so write a complete, self-contained HTML document (starting with <!DOCTYPE html>, with any CSS/JS inlined) whenever the user asks for a webpage, UI mockup, interactive tool, or visual output.
+6. STANDARD CODE BLOCKS: For code snippets, terminal commands, or short examples, use standard markdown code blocks.
+7. DOCUMENT DOWNLOAD LINKS: When creating Word, PDF, Excel, or PPTX documents, ALWAYS provide the download link: [Download DocumentName.ext](/api/documents/download/DocumentName.ext). Never claim to be in a simulation — files are live and immediately downloadable.
+8. DIAGRAMS: When generating architectural or flow diagrams, use Mermaid blocks (\`\`\`mermaid).
+9. SILENT TOOL EXECUTION: Execute tools silently in the background. Never output raw JSON objects or textual imitations of tool calls in message prose.
+10. STRICT NO-EMOJI RESTRICTION: Do NOT display or include any emojis anywhere in your replies under any circumstances.`;
 
 
 function stripEmojis(text: string): string {
@@ -302,6 +286,144 @@ function updateMemoriesFromMessage(content: string) {
 }
 
 
+function getOmnirouteKey(): string {
+  try {
+    const omniEnvPath = path.join(process.env.HOME || '/home/vinay', '.omniroute', '.env');
+    if (fs.existsSync(omniEnvPath)) {
+      const content = fs.readFileSync(omniEnvPath, 'utf8');
+      for (const line of content.split('\n')) {
+        if (line.startsWith('OMNIROUTE_API_KEY=')) {
+          return line.split('=', 2)[1].trim();
+        }
+      }
+    }
+  } catch {}
+  return process.env.OMNIROUTE_API_KEY || '';
+}
+
+function getBackendOllamaKeys(): string[] {
+  const keys: string[] = [];
+  try {
+    const backendEnvPath = path.join(process.cwd().endsWith('frontend') ? path.dirname(process.cwd()) : process.cwd(), 'backend', '.env');
+    if (fs.existsSync(backendEnvPath)) {
+      const content = fs.readFileSync(backendEnvPath, 'utf8');
+      for (const line of content.split('\n')) {
+        if (line.startsWith('OLLAMA_API_KEY')) {
+          const val = line.split('=', 2)[1]?.trim();
+          if (val && !keys.includes(val)) keys.push(val);
+        }
+      }
+    }
+  } catch {}
+  const fallbackKeys = [
+    '26a95f0c5431431d8338645cdde4998f.CyDoeN4fDrSTJum8dpfRglps',
+    'edaff62e882644429122351eebfb886f.nWMqDHxFN_XoKqrj0OuSysKN',
+    '8236b13c2ce04b7ab1e0a47db95044ca.hr_X86hvlBtvKIajcuDKMa7i',
+    'e3a4223d79bb4987a04cc8c84ca13126.ZinzQDR_UwLbEOI3-d2EeT3w',
+    '656c9a178c5147cfbde8bea65bd2586c.362NxF3QYCi36-V3vH10tKUY'
+  ];
+  for (const k of fallbackKeys) {
+    if (!keys.includes(k)) keys.push(k);
+  }
+  return keys;
+}
+
+function mapOmnirouteModel(model: string): string {
+  switch (model) {
+    case 'claude-sonnet-4-5':
+      return 'auto/best-coding';
+    case 'claude-opus-4-5':
+      return 'gpt-6-astra-high';
+    case 'claude-haiku-3-5':
+      return 'auto/fast';
+    case 'deepseek-chat':
+    case 'deepseek-v3':
+      return 'auto/best-coding';
+    case 'google/gemma-4-31b-it:free':
+    case 'gemma-free':
+      return 'auto/best-free';
+    case 'nvidia/nemotron-3-super-120b-a12b:free':
+      return 'auto/best-free';
+    default:
+      return 'auto/best-coding';
+  }
+}
+
+async function detectAndExecuteWebSearch(messages: any[]): Promise<{ query: string; resultsText: string } | null> {
+  if (!messages || messages.length === 0) return null;
+  const lastMsg = (messages[messages.length - 1]?.content || '').trim();
+  if (!lastMsg) return null;
+  const lower = lastMsg.toLowerCase();
+
+  // 1. Skip pure greetings and conversational pleasantries
+  const isGreeting = /^(hi|hello|hey|greetings|good morning|good evening|good afternoon|howdy|sup|thanks|thank you|bye|goodbye|ok|okay)[!.? ]*$/i.test(lastMsg);
+  if (isGreeting) return null;
+
+  // 2. Skip pure arithmetic
+  if (/^what is \d+[\s+\-*/^]+\d+/i.test(lastMsg) || /^calculate /i.test(lastMsg)) return null;
+
+  // 3. Skip pure generic coding requests that have NO real-world entity, model, or product names
+  const isPureGenericCoding = /^(write|create|implement|give me|show me)\s+(a\s+)?(python|javascript|typescript|c\+\+|java|rust|go|html|css|sql|function|script|algorithm|regex|class)\s+(to\s+|for\s+)?(reverse|sort|find|sum|calculate|loop|print|check|validate)\b/i.test(lastMsg);
+  if (isPureGenericCoding) return null;
+
+  // 4. URL detection: ALWAYS search or verify when a URL is provided
+  const urlMatch = lastMsg.match(/https?:\/\/[^\s]+/i);
+
+  let query = '';
+
+  if (urlMatch) {
+    // If the message is a URL or contains a URL, search for that exact URL or page
+    query = urlMatch[0];
+  } else {
+    // Clean query of conversational prefixes
+    query = lastMsg
+      .replace(/\b(dont u know|don't you know|did you know|can you|could you|please|use search|search for|search|google it|google|look up|tell me about|tell me|who is|what is|why is)\b/gi, ' ')
+      .replace(/[?!,.:;"]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    // Check if query has pronouns or is a short follow-up: enrich with earlier subjects
+    const hasPronouns = /\b(he|him|his|she|her|they|them|their|it|its|that|this|the actor|the politician|the model|the company|the quote|the statement)\b/i.test(lastMsg);
+    if (hasPronouns || query.split(' ').length <= 4 || messages.length > 2) {
+      const priorUserMessages = messages
+        .slice(0, -1)
+        .filter((m: any) => m.role === 'user')
+        .map((m: any) => m.content)
+        .join(' ');
+
+      const priorClean = priorUserMessages
+        .replace(/\b(hi|hello|who is|what is|tell me|about|and|famous|for|dont u know|did you know|use search)\b/gi, ' ')
+        .replace(/[?!,.:;"]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+      if (priorClean) {
+        const priorWords = priorClean.split(/\s+/).filter(w => w.length > 3);
+        const missingWords = priorWords.filter(w => !lower.includes(w.toLowerCase()));
+        if (missingWords.length > 0) {
+          query = `${missingWords.slice(0, 3).join(' ')} ${query}`.trim();
+        }
+      }
+    }
+  }
+
+  if (!query || query.length < 3) return null;
+
+  try {
+    const searchRes = await executeTool('web_search', { query });
+    if (searchRes && Array.isArray(searchRes.results) && searchRes.results.length > 0) {
+      const topResults = searchRes.results.slice(0, 5);
+      const resultsText = topResults
+        .map((r: any, idx: number) => `[${idx + 1}] ${r.title}\n${r.snippet || ''}\nURL: ${r.url}`)
+        .join('\n\n');
+      return { query, resultsText };
+    }
+  } catch (err) {
+    console.warn('Auto search execution failed:', err);
+  }
+  return null;
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
@@ -316,20 +438,12 @@ export async function POST(req: NextRequest) {
       userName: clientUserName,
     } = body;
 
-    const apiKey =
+    const omniKey = getOmnirouteKey();
+    const openRouterKey =
       customApiKey ||
       process.env.OPENROUTER_API_KEY ||
       process.env.ANTHROPIC_API_KEY ||
       '';
-
-    if (!apiKey) {
-      return new Response(
-        JSON.stringify({
-          error: 'No API key configured. Please set OPENROUTER_API_KEY in .env.local or in Settings.',
-        }),
-        { status: 401, headers: { 'Content-Type': 'application/json' } }
-      );
-    }
 
     // Inspect user's last message for durable facts to persist
     const lastUserMessage = messages[messages.length - 1]?.content || '';
@@ -338,10 +452,15 @@ export async function POST(req: NextRequest) {
     // Retrieve memories synchronously from cache/disk (fast), refresh backend in background
     const { promptBlock } = getPersistentMemories(clientUserName, body.userNickname);
     refreshMemoriesFromBackend(); // fire-and-forget — updates cache for next request
-    const baseSystemPrompt = customSystemPrompt || SYSTEM_PROMPT;
+    const MIMIR_RULES_ENFORCEMENT = `\n\nMANDATORY MIMIR OUTPUT RULES:
+- Output-first & no large text: Deliver the exact answer directly. Never spit out unrequested walls of text or conversational fluff.
+- Zero random bullshit: No pleasantries ('Sure!', 'Here is...'), no preambles ('Based on...'), no closing remarks ('Hope this helps!').
+- No emojis: Never output any emojis under any circumstances.`;
+
+    const baseSystemPrompt = customSystemPrompt
+      ? `${customSystemPrompt}${MIMIR_RULES_ENFORCEMENT}`
+      : SYSTEM_PROMPT;
     const fullSystemPrompt = `${baseSystemPrompt}${promptBlock}`;
-
-
 
     let targetModel = MODEL_MAP[model] || model;
 
@@ -353,21 +472,32 @@ export async function POST(req: NextRequest) {
       })),
     ];
 
+    // Real-time automatic web search resolution
+    const autoSearch = await detectAndExecuteWebSearch(messages);
+    if (autoSearch) {
+      conversationHistory.push({
+        role: 'system',
+        content: `[VERIFIED REAL-TIME LIVE SEARCH RESULTS for "${autoSearch.query}"]:\n${autoSearch.resultsText}\n\nINSTRUCTION: Answer the user's inquiry directly, accurately, and honestly using these real-time search results. State the facts clearly without preamble or unnecessary disclaimers.`,
+      });
+    }
+
     const stream = new ReadableStream({
       async start(controller) {
         const encoder = new TextEncoder();
-        const ollamaKey = process.env.OLLAMA_API_KEY || '26a95f0c5431431d8338645cdde4998f.CyDoeN4fDrSTJum8dpfRglps';
+        const ollamaKeys = getBackendOllamaKeys();
 
         const sendText = (text: string) => {
           controller.enqueue(encoder.encode(sseChunk(text)));
         };
 
-        // Stream Ollama response (no tools — fallback only)
+        // Stream Ollama response (fallback)
         const pipeOllamaStream = async (res: Response) => {
-          if (!res.body) return;
+          if (!res.body) return false;
           const reader = res.body.getReader();
           const decoder = new TextDecoder();
           let buffer = '';
+          let streamedAny = false;
+          let fullResponse = '';
           while (true) {
             const { done, value } = await reader.read();
             if (done) break;
@@ -380,16 +510,31 @@ export async function POST(req: NextRequest) {
               try {
                 const data = JSON.parse(trimmed);
                 const token = data.message?.content || '';
-                if (token) sendText(token);
-                if (data.done) return;
+                if (token) {
+                  sendText(token);
+                  fullResponse += token;
+                  streamedAny = true;
+                }
+                if (data.done) {
+                  const docMatch = fullResponse.match(/([a-zA-Z0-9_\- ]+\.(docx|pdf|xlsx|csv|pptx))/i);
+                  if (docMatch) {
+                    const matchedName = docMatch[1].trim();
+                    const ext = docMatch[2].toLowerCase();
+                    const publicPath = path.resolve(process.cwd(), `public/generated_docs/${matchedName}`);
+                    executeTool(
+                      ext === 'docx' ? 'create_word_document' : ext === 'pdf' ? 'create_pdf_document' : ext === 'pptx' ? 'create_presentation' : 'create_spreadsheet',
+                      { title: matchedName, content: fullResponse, path: publicPath }
+                    ).catch(() => {});
+                  }
+                  return streamedAny;
+                }
               } catch {}
             }
           }
+          return streamedAny;
         };
 
-        // Stream OpenRouter response WITH tool call detection.
-        // Returns accumulated tool calls if the model chose to call tools,
-        // or null if it streamed a text answer (already sent via sendText).
+        // Stream OpenAI-compatible response WITH tool call detection
         const streamWithTools = async (res: Response): Promise<any[] | null> => {
           if (!res.body) return null;
           const reader = res.body.getReader();
@@ -440,97 +585,168 @@ export async function POST(req: NextRequest) {
         };
 
         try {
-          let activeModel = targetModel;
+          let streamedSuccess = false;
           const MAX_ROUNDS = 4;
 
-          for (let round = 0; round < MAX_ROUNDS; round++) {
-            // Try primary model first, then deepseek fallback
-            let res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-              method: 'POST',
-              headers: {
-                Authorization: `Bearer ${apiKey}`,
-                'Content-Type': 'application/json',
-                'HTTP-Referer': 'http://localhost:4028',
-                'X-Title': 'ClaudeChat',
-              },
-              body: JSON.stringify({
-                model: activeModel,
-                messages: conversationHistory,
-                tools: AGENT_TOOLS_SCHEMA,
-                tool_choice: 'auto',
-                temperature,
-                max_tokens: 1000,
-                stream: true,
-              }),
-            });
+          // 1. Try OpenRouter or Local Omniroute (Fast, Tools-enabled)
+          // Prioritize OPENROUTER_API_KEY when present since it connects directly to cloud models
+          const useOpenRouter = !!openRouterKey;
+          let endpointUrl = useOpenRouter
+            ? 'https://openrouter.ai/api/v1/chat/completions'
+            : (omniKey ? 'http://127.0.0.1:20128/v1/chat/completions' : 'https://openrouter.ai/api/v1/chat/completions');
+          let authBearer = useOpenRouter ? openRouterKey : (omniKey || openRouterKey);
+          let activeModel = targetModel;
 
-            if (!res.ok && activeModel !== 'deepseek/deepseek-chat') {
-              activeModel = 'deepseek/deepseek-chat';
-              res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-                method: 'POST',
-                headers: {
-                  Authorization: `Bearer ${apiKey}`,
-                  'Content-Type': 'application/json',
-                  'HTTP-Referer': 'http://localhost:4028',
-                  'X-Title': 'ClaudeChat',
-                },
-                body: JSON.stringify({
-                  model: activeModel,
-                  messages: conversationHistory,
-                  tools: AGENT_TOOLS_SCHEMA,
-                  tool_choice: 'auto',
-                  temperature,
-                  max_tokens: 1000,
-                  stream: true,
-                }),
-              });
-            }
+          if (authBearer) {
+            for (let round = 0; round < MAX_ROUNDS; round++) {
+              let res: Response | null = null;
+              try {
+                res = await fetch(endpointUrl, {
+                  method: 'POST',
+                  headers: {
+                    Authorization: `Bearer ${authBearer}`,
+                    'Content-Type': 'application/json',
+                    'HTTP-Referer': 'http://localhost:4028',
+                    'X-Title': 'ClaudeChat',
+                  },
+                  body: JSON.stringify({
+                    model: activeModel,
+                    messages: conversationHistory,
+                    tools: AGENT_TOOLS_SCHEMA,
+                    tool_choice: 'auto',
+                    temperature,
+                    max_tokens: 1500,
+                    stream: true,
+                  }),
+                });
+              } catch (netErr: any) {
+                console.warn(`Primary endpoint ${endpointUrl} failed:`, netErr.message);
+                // If local Omniroute failed, try OpenRouter directly if we have a key
+                if (!useOpenRouter && openRouterKey) {
+                  endpointUrl = 'https://openrouter.ai/api/v1/chat/completions';
+                  authBearer = openRouterKey;
+                  activeModel = targetModel;
+                  try {
+                    res = await fetch(endpointUrl, {
+                      method: 'POST',
+                      headers: {
+                        Authorization: `Bearer ${authBearer}`,
+                        'Content-Type': 'application/json',
+                        'HTTP-Referer': 'http://localhost:4028',
+                        'X-Title': 'ClaudeChat',
+                      },
+                      body: JSON.stringify({
+                        model: activeModel,
+                        messages: conversationHistory,
+                        tools: AGENT_TOOLS_SCHEMA,
+                        tool_choice: 'auto',
+                        temperature,
+                        max_tokens: 1500,
+                        stream: true,
+                      }),
+                    });
+                  } catch {}
+                }
+              }
 
-            // If both OpenRouter options fail — use Ollama (no tools)
-            if (!res.ok) {
-              const ollamaRes = await fetch('https://api.ollama.com/api/chat', {
-                method: 'POST',
-                headers: { Authorization: `Bearer ${ollamaKey}`, 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  model: 'gemma4:cloud',
-                  messages: conversationHistory.map((m: any) => ({ role: m.role, content: m.content || '' })),
-                  stream: true,
-                }),
-              });
-              if (ollamaRes.ok) await pipeOllamaStream(ollamaRes);
-              break;
-            }
+              // If model returned 400/402/etc. or failed, retry with deepseek-chat
+              if (!res || !res.ok) {
+                if (activeModel !== 'deepseek/deepseek-chat') {
+                  activeModel = 'deepseek/deepseek-chat';
+                  try {
+                    res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+                      method: 'POST',
+                      headers: {
+                        Authorization: `Bearer ${openRouterKey || authBearer}`,
+                        'Content-Type': 'application/json',
+                        'HTTP-Referer': 'http://localhost:4028',
+                        'X-Title': 'ClaudeChat',
+                      },
+                      body: JSON.stringify({
+                        model: activeModel,
+                        messages: conversationHistory,
+                        tools: AGENT_TOOLS_SCHEMA,
+                        tool_choice: 'auto',
+                        temperature,
+                        max_tokens: 1000,
+                        stream: true,
+                      }),
+                    });
+                  } catch {}
+                }
+              }
 
-            // Stream the response and detect tool calls
-            const toolCalls = await streamWithTools(res);
+              if (!res || !res.ok) break;
 
-            // No tools called — the answer was already streamed, we're done
-            if (!toolCalls || toolCalls.length === 0) break;
 
-            // Tools were called — execute them silently
-            conversationHistory.push({
-              role: 'assistant',
-              content: null,
-              tool_calls: toolCalls.map(tc => ({
-                id: tc.id,
-                type: 'function',
-                function: { name: tc.function.name, arguments: tc.function.arguments },
-              })),
-            });
+              // Stream response and detect tool calls
+              const toolCalls = await streamWithTools(res);
 
-            for (const tc of toolCalls) {
-              const toolName = tc.function?.name;
-              let toolArgs: Record<string, any> = {};
-              try { toolArgs = JSON.parse(tc.function?.arguments || '{}'); } catch {}
-              const result = await executeTool(toolName, toolArgs);
+              // No tools called — answer finished
+              if (!toolCalls || toolCalls.length === 0) {
+                streamedSuccess = true;
+                break;
+              }
+
+              // Tools were called — execute them silently
               conversationHistory.push({
-                role: 'tool',
-                tool_call_id: tc.id,
-                name: toolName,
-                content: JSON.stringify(result),
+                role: 'assistant',
+                content: null,
+                tool_calls: toolCalls.map(tc => ({
+                  id: tc.id,
+                  type: 'function',
+                  function: { name: tc.function.name, arguments: tc.function.arguments },
+                })),
               });
+
+              for (const tc of toolCalls) {
+                const toolName = tc.function?.name;
+                let toolArgs: Record<string, any> = {};
+                try { toolArgs = JSON.parse(tc.function?.arguments || '{}'); } catch {}
+                const result = await executeTool(toolName, toolArgs);
+                conversationHistory.push({
+                  role: 'tool',
+                  tool_call_id: tc.id,
+                  name: toolName,
+                  content: JSON.stringify(result),
+                });
+              }
             }
-            // Loop continues — next iteration streams the final answer
+          }
+
+          // 2. Fallback to Cloud Ollama keys if primary did not stream
+          if (!streamedSuccess) {
+            // Flatten conversation history for Ollama compatibility (no tool_call objects)
+            const cleanOllamaMessages = conversationHistory.map(m => {
+              if (m.role === 'tool') {
+                return { role: 'user', content: `[Tool Result: ${m.name || 'tool'}]: ${m.content}` };
+              }
+              if (m.role === 'assistant' && !m.content) {
+                return { role: 'assistant', content: 'Evaluating tool execution...' };
+              }
+              return { role: m.role, content: m.content || '' };
+            });
+
+            for (const key of ollamaKeys) {
+              try {
+                const ollamaRes = await fetch('https://api.ollama.com/api/chat', {
+                  method: 'POST',
+                  headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    model: 'gemma4:cloud',
+                    messages: cleanOllamaMessages,
+                    stream: true,
+                  }),
+                });
+                if (ollamaRes.ok) {
+                  const streamed = await pipeOllamaStream(ollamaRes);
+                  if (streamed) {
+                    streamedSuccess = true;
+                    break;
+                  }
+                }
+              } catch {}
+            }
           }
         } catch (err: any) {
           console.error('Agent loop error:', err);
@@ -541,7 +757,6 @@ export async function POST(req: NextRequest) {
         }
       },
     });
-
 
     return new Response(stream, {
       headers: {

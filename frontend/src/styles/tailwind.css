@@ -199,8 +199,8 @@
   }
 
   .code-block-bg {
-    background-color: var(--code-bg);
-    border-color: var(--code-border);
+    background-color: transparent !important;
+    border-color: var(--border);
   }
 
   .streaming-cursor {

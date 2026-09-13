@@ -9,6 +9,7 @@ import {
   Maximize2,
   Minimize2,
   FileOutput,
+  FileText,
   Code2,
   Eye,
   Columns,
@@ -22,6 +23,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useChat } from '@/context/ChatContext';
+import MermaidDiagram from './MermaidDiagram';
 
 interface ArtifactPanelProps {
   open?: boolean;
@@ -65,15 +67,16 @@ export default function ArtifactPanel(props: ArtifactPanelProps) {
 
   const isHtml = language === 'html' || content.trim().startsWith('<!DOCTYPE') || content.trim().startsWith('<html') || content.trim().includes('<div');
   const isSvg = language === 'svg' || content.trim().startsWith('<svg');
+  const isMermaid = language === 'mermaid' || /^\s*(sequenceDiagram|flowchart|graph|classDiagram|stateDiagram|erDiagram|mindmap|gantt|gitGraph)/.test(content);
 
   // Default mode on load
   useEffect(() => {
-    if (isHtml || isSvg) {
+    if (isHtml || isSvg || isMermaid) {
       setLayoutMode('preview');
     } else {
       setLayoutMode('code');
     }
-  }, [content, language, isHtml, isSvg]);
+  }, [content, language, isHtml, isSvg, isMermaid]);
 
   // Listen to sandbox console messages via postMessage
   useEffect(() => {
@@ -189,6 +192,34 @@ export default function ArtifactPanel(props: ArtifactPanelProps) {
     setTimeout(cleanup, 1000);
   };
 
+  const handleExportDocx = async () => {
+    try {
+      toast.info('Generating Word (.docx) document...');
+      const res = await fetch('/api/documents/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          format: 'docx',
+          title,
+          prompt: title,
+          content,
+        }),
+      });
+      const data = await res.json();
+      if (data.success && data.download_url) {
+        const a = document.createElement('a');
+        a.href = data.download_url;
+        a.download = data.filename || `${title}.docx`;
+        a.click();
+        toast.success('Word document downloaded');
+      } else {
+        toast.error('Failed to generate Word document');
+      }
+    } catch (e: any) {
+      toast.error(e.message || 'Error generating Word document');
+    }
+  };
+
   const handleReloadSandbox = () => {
     setIframeKey((k) => k + 1);
     setConsoleLogs([]);
@@ -251,6 +282,13 @@ export default function ArtifactPanel(props: ArtifactPanelProps) {
               title="Print / Save PDF"
             >
               <FileOutput size={14} />
+            </button>
+            <button
+              onClick={handleExportDocx}
+              className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground active:scale-95 transition-all"
+              title="Export to Word (.docx)"
+            >
+              <FileText size={14} />
             </button>
             <button
               onClick={() => setExpanded(!expanded)}
@@ -403,26 +441,32 @@ export default function ArtifactPanel(props: ArtifactPanelProps) {
                 ${deviceMode !== 'desktop' ? 'bg-neutral-900/50' : ''}
               `}
             >
-              <div
-                style={{
-                  width: deviceWidth,
-                  height: deviceMode !== 'desktop' ? '92%' : '100%',
-                  maxHeight: deviceMode === 'mobile' ? '680px' : deviceMode === 'tablet' ? '820px' : '100%',
-                  borderRadius: deviceMode !== 'desktop' ? '24px' : '0px',
-                  boxShadow: deviceMode !== 'desktop' ? '0 12px 40px rgba(0,0,0,0.5)' : 'none',
-                  border: deviceMode !== 'desktop' ? '1px solid rgba(255,255,255,0.1)' : 'none',
-                  overflow: 'hidden',
-                }}
-                className="transition-all duration-300 relative bg-white"
-              >
-                <iframe
-                  key={iframeKey}
-                  srcDoc={sandboxHtml}
-                  title={title}
-                  sandbox="allow-scripts allow-forms allow-popups allow-modals allow-same-origin"
-                  className="w-full h-full border-0"
-                />
-              </div>
+              {isMermaid ? (
+                <div className="w-full h-full p-2 overflow-auto flex items-center justify-center">
+                  <MermaidDiagram code={content} className="w-full h-full border-0 bg-transparent" />
+                </div>
+              ) : (
+                <div
+                  style={{
+                    width: deviceWidth,
+                    height: deviceMode !== 'desktop' ? '92%' : '100%',
+                    maxHeight: deviceMode === 'mobile' ? '680px' : deviceMode === 'tablet' ? '820px' : '100%',
+                    borderRadius: deviceMode !== 'desktop' ? '24px' : '0px',
+                    boxShadow: deviceMode !== 'desktop' ? '0 12px 40px rgba(0,0,0,0.5)' : 'none',
+                    border: deviceMode !== 'desktop' ? '1px solid rgba(255,255,255,0.1)' : 'none',
+                    overflow: 'hidden',
+                  }}
+                  className="transition-all duration-300 relative bg-white"
+                >
+                  <iframe
+                    key={iframeKey}
+                    srcDoc={sandboxHtml}
+                    title={title}
+                    sandbox="allow-scripts allow-forms allow-popups allow-modals allow-same-origin"
+                    className="w-full h-full border-0"
+                  />
+                </div>
+              )}
             </div>
           )}
         </div>

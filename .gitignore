@@ -47,3 +47,7 @@ backend/.venv/
 backend/.pytest_cache/
 backend/__pycache__/
 backend/data/
+data/
+frontend/public/generated_docs/
+.claude/
+frontend/isro_2026_mission_roadmap.md

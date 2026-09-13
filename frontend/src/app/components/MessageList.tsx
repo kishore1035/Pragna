@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useCallback } from 'react';
 import { Message } from '../types/chat';
 import MessageBubble from './MessageBubble';
 
@@ -8,6 +8,7 @@ interface MessageListProps {
   messages: Message[];
   isStreaming: boolean;
   onOpenArtifact?: (title: string, content: string, language?: string) => void;
+  onRetryLast?: () => void;
 }
 
 function getDateLabel(timestamp: string): string {
@@ -44,9 +45,13 @@ function getDayKey(timestamp: string): string {
   }
 }
 
-export default function MessageList({ messages, isStreaming, onOpenArtifact }: MessageListProps) {
+export default function MessageList({ messages, isStreaming, onOpenArtifact, onRetryLast }: MessageListProps) {
+  const handleRetry = useCallback(() => {
+    onRetryLast?.();
+  }, [onRetryLast]);
+
   return (
-    <div className="max-w-chat mx-auto px-4 py-6 space-y-6">
+    <div className="max-w-chat mx-auto px-4 py-5 space-y-3">
       {messages.map((message, index) => {
         const currentDayKey = getDayKey(message.timestamp);
         const prevDayKey = index > 0 ? getDayKey(messages[index - 1].timestamp) : null;
@@ -62,6 +67,11 @@ export default function MessageList({ messages, isStreaming, onOpenArtifact }: M
             showDateSeparator={showDateSeparator}
             dateSeparatorLabel={dateSeparatorLabel}
             onOpenArtifact={onOpenArtifact}
+            onRetry={index === messages.length - 1 && message.role === 'assistant' && (
+              message.content.includes("Could not connect") ||
+              message.content.includes("Error:") ||
+              message.content.startsWith("*(Error:")
+            ) ? handleRetry : undefined}
           />
         );
       })}

@@ -16,6 +16,16 @@ class ResumeToolRequest(BaseModel):
     conversation_id: Optional[int] = None
 
 
+class SearchRequest(BaseModel):
+    query: str
+
+
+@router.post("/api/tools/search")
+async def tool_search(body: SearchRequest):
+    from app.tools import perform_web_search
+    return await perform_web_search(body.query)
+
+
 @router.post("/api/conversations/{conversation_id}/resume-tool")
 @router.post("/api/tools/resume")
 async def resume_tool(

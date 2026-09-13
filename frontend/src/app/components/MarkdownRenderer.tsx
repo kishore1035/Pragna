@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Copy, Check, PanelRight } from 'lucide-react';
+import MermaidDiagram from './MermaidDiagram';
 
 interface MarkdownRendererProps {
   content: string;
@@ -60,27 +61,41 @@ export default function MarkdownRenderer({ content, onOpenArtifact }: MarkdownRe
         // Horizontal rule
         hr: () => <hr className="border-border my-4" />,
 
-        // Links
-        a: ({ href, children }) => (
-          <a
-            href={href}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-primary underline underline-offset-[3px] hover:text-primary/80 transition-colors duration-150"
-          >
-            {children}
-          </a>
-        ),
+        // Links & Document Downloads
+        a: ({ href, children }) => {
+          const text = extractText(children);
+          const raw = href || text || '';
+          const isDoc = /\.(docx|pdf|xlsx|csv|pptx)$/i.test(raw.trim());
+          let targetUrl = href || '#';
+          if (isDoc) {
+            const cleanName = raw.trim().split('/').pop() || raw.trim();
+            targetUrl = `/api/documents/download/${encodeURIComponent(cleanName)}`;
+          }
+          return (
+            <a
+              href={targetUrl}
+              download={isDoc ? true : undefined}
+              target={isDoc ? '_self' : '_blank'}
+              rel="noopener noreferrer"
+              className={
+                isDoc
+                  ? "inline-flex items-center gap-1.5 px-3 py-1 my-1 rounded-lg bg-primary/10 hover:bg-primary/20 text-primary font-medium text-xs border border-primary/30 transition-all active:scale-95 no-underline font-mono"
+                  : "text-primary underline underline-offset-[3px] hover:text-primary/80 transition-colors duration-150"
+              }
+            >
+              {children}
+            </a>
+          );
+        },
 
         // Inline code
         code: ({ children, className }) => {
           const isBlock = className?.startsWith('language-');
           if (isBlock) {
-            // Block code is handled by pre
-            return <code className={className}>{children}</code>;
+            return <code className={`${className} bg-transparent`}>{children}</code>;
           }
           return (
-            <code className="bg-muted text-primary px-1.5 py-0.5 rounded text-[0.875em] font-mono">
+            <code className="bg-transparent text-primary px-0.5 py-0 text-[0.875em] font-mono font-medium">
               {children}
             </code>
           );
@@ -93,25 +108,25 @@ export default function MarkdownRenderer({ content, onOpenArtifact }: MarkdownRe
 
         // Tables
         table: ({ children }) => (
-          <div className="overflow-x-auto my-4 rounded-lg border border-border">
-            <table className="w-full text-sm">{children}</table>
+          <div className="overflow-x-auto my-3 rounded-lg border border-border/40 bg-transparent">
+            <table className="w-full text-sm bg-transparent">{children}</table>
           </div>
         ),
         thead: ({ children }) => (
-          <thead className="bg-muted">{children}</thead>
+          <thead className="bg-transparent border-b border-border/40">{children}</thead>
         ),
         th: ({ children }) => (
-          <th className="px-4 py-2.5 text-left font-semibold text-foreground border-b border-border text-sm">
+          <th className="px-3.5 py-2 text-left font-semibold text-foreground border-b border-border/40 text-sm bg-transparent">
             {children}
           </th>
         ),
         td: ({ children }) => (
-          <td className="px-4 py-2.5 text-foreground/90 border-b border-border/50 text-sm">
+          <td className="px-3.5 py-2 text-foreground/90 border-b border-border/20 text-sm bg-transparent">
             {children}
           </td>
         ),
         tr: ({ children }) => (
-          <tr className="hover:bg-muted/30 transition-colors duration-100">{children}</tr>
+          <tr className="bg-transparent hover:bg-white/[0.02] transition-colors duration-100">{children}</tr>
         ),
       }}
     >
@@ -155,9 +170,9 @@ function CodeBlock({
   };
 
   return (
-    <div className="my-4 rounded-xl overflow-hidden border code-block-bg">
+    <div className="my-3 rounded-xl overflow-hidden border border-border/40 bg-transparent">
       {/* Code block header */}
-      <div className="flex items-center justify-between px-4 py-2 bg-black/20">
+      <div className="flex items-center justify-between px-3.5 py-1.5 bg-transparent border-b border-border/20">
         <span className="text-xs font-medium text-muted-foreground/70 font-mono uppercase tracking-wider">
           {language || 'text'}
         </span>
@@ -193,13 +208,17 @@ function CodeBlock({
       </div>
 
       {/* Code content */}
-      <div className="overflow-x-auto">
-        <pre className="p-4 text-sm leading-relaxed">
-          <code className="font-mono text-[0.8125rem] text-gray-200 whitespace-pre">
-            {codeText}
-          </code>
-        </pre>
-      </div>
+      {language?.toLowerCase() === 'mermaid' || /^\s*(sequenceDiagram|flowchart|graph|classDiagram|stateDiagram|erDiagram|mindmap|gantt|gitGraph)/.test(codeText) ? (
+        <MermaidDiagram code={codeText} className="border-0 rounded-none bg-transparent" />
+      ) : (
+        <div className="overflow-x-auto bg-transparent">
+          <pre className="p-3.5 text-sm leading-relaxed bg-transparent">
+            <code className="font-mono text-[0.8125rem] text-foreground/90 whitespace-pre bg-transparent">
+              {codeText}
+            </code>
+          </pre>
+        </div>
+      )}
     </div>
   );
 }
