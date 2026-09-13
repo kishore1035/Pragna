@@ -131,7 +131,7 @@ export async function POST(req: NextRequest) {
 
           // Pure chat / code query: direct streaming without tool roundtrip
           if (!needsToolDeliberation) {
-            const directRes = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+            let directRes = await fetch('https://openrouter.ai/api/v1/chat/completions', {
               method: 'POST',
               headers: {
                 Authorization: `Bearer ${apiKey}`,
@@ -143,10 +143,30 @@ export async function POST(req: NextRequest) {
                 model: activeModel,
                 messages: conversationHistory,
                 temperature,
-                max_tokens: Math.min(max_tokens, 4000),
+                max_tokens: 2000,
                 stream: true,
               }),
             });
+
+            if (!directRes.ok && activeModel !== 'deepseek/deepseek-chat') {
+              activeModel = 'deepseek/deepseek-chat';
+              directRes = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+                method: 'POST',
+                headers: {
+                  Authorization: `Bearer ${apiKey}`,
+                  'Content-Type': 'application/json',
+                  'HTTP-Referer': 'http://localhost:4028',
+                  'X-Title': 'ClaudeChat',
+                },
+                body: JSON.stringify({
+                  model: activeModel,
+                  messages: conversationHistory,
+                  temperature,
+                  max_tokens: 2000,
+                  stream: true,
+                }),
+              });
+            }
 
             if (directRes.ok) {
               await pipeStream(directRes);

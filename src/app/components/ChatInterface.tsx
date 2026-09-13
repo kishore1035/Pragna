@@ -11,12 +11,12 @@ import { Conversation, Message, ModelOption } from '../types/chat';
 import { generateId, getConversationTitle, groupConversationsByDate } from '../utils/chatUtils';
 
 export const MODELS: ModelOption[] = [
-  { id: 'claude-sonnet-4-5', label: 'Claude Sonnet 4.5', description: 'Most intelligent & articulate' },
-  { id: 'deepseek-chat', label: 'DeepSeek V3', description: 'Ultra-fast & high intelligence' },
-  { id: 'claude-opus-4-5', label: 'Claude Opus 4.5', description: 'Deep reasoning & complex tasks' },
+  { id: 'deepseek-chat', label: 'DeepSeek V3 (Fast)', description: 'Instant response, high intelligence & live tools' },
+  { id: 'claude-sonnet-4-5', label: 'Claude Sonnet 4.5', description: 'Deep reasoning & articulate' },
+  { id: 'claude-opus-4-5', label: 'Claude Opus 4.5', description: 'Complex multi-step tasks' },
   { id: 'claude-haiku-3-5', label: 'Claude Haiku 3.5', description: 'Fast & efficient' },
-  { id: 'google/gemma-4-31b-it:free', label: 'Google Gemma 4 31B', description: 'Capable open weights (Free)' },
-  { id: 'nvidia/nemotron-3-super-120b-a12b:free', label: 'Nvidia Nemotron 120B', description: 'High capability model (Free)' },
+  { id: 'google/gemma-4-31b-it:free', label: 'Google Gemma 4 31B', description: 'Open weights (Free)' },
+  { id: 'nvidia/nemotron-3-super-120b-a12b:free', label: 'Nvidia Nemotron 120B', description: 'High capability (Free)' },
 ];
 
 const STORAGE_KEY = 'claudechat_conversations';
