@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
+import { VoicePoweredOrb } from '@/components/ui/voice-powered-orb';
 import {
   fetchVoiceProfiles,
   VoiceProfile,
@@ -30,7 +31,6 @@ export default function VoiceAssistantModal({
   const [isHandsFree, setIsHandsFree] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const micStreamRef = useRef<MediaStream | null>(null);
@@ -249,102 +249,6 @@ export default function VoiceAssistantModal({
     }
   };
 
-  // Render organic Apple Siri / Intelligence glow visualizer on canvas
-  useEffect(() => {
-    if (!isOpen) return;
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    let phase = 0;
-
-    const render = () => {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      const width = canvas.width;
-      const height = canvas.height;
-      const centerX = width / 2;
-      const centerY = height / 2;
-
-      let volume = 0;
-      if (analyserRef.current) {
-        const dataArray = new Uint8Array(analyserRef.current.frequencyBinCount);
-        analyserRef.current.getByteFrequencyData(dataArray);
-        const sum = dataArray.reduce((a, b) => a + b, 0);
-        volume = sum / dataArray.length / 255;
-      }
-
-      phase += 0.04 + volume * 0.08;
-
-      // Base radius and pulse
-      const baseRadius = 60 + volume * 40;
-
-      // Glowing multi-layer radiant gradients
-      const gradient = ctx.createRadialGradient(
-        centerX,
-        centerY,
-        baseRadius * 0.2,
-        centerX,
-        centerY,
-        baseRadius * 1.6
-      );
-
-      if (status === 'listening') {
-        gradient.addColorStop(0, 'rgba(212, 175, 55, 0.95)');
-        gradient.addColorStop(0.5, 'rgba(255, 200, 80, 0.45)');
-        gradient.addColorStop(1, 'rgba(212, 175, 55, 0)');
-      } else if (status === 'thinking') {
-        gradient.addColorStop(0, 'rgba(120, 160, 255, 0.95)');
-        gradient.addColorStop(0.5, 'rgba(160, 120, 255, 0.45)');
-        gradient.addColorStop(1, 'rgba(120, 160, 255, 0)');
-      } else if (status === 'speaking') {
-        gradient.addColorStop(0, 'rgba(80, 220, 160, 0.95)');
-        gradient.addColorStop(0.5, 'rgba(50, 180, 220, 0.45)');
-        gradient.addColorStop(1, 'rgba(80, 220, 160, 0)');
-      } else {
-        gradient.addColorStop(0, 'rgba(255, 255, 255, 0.7)');
-        gradient.addColorStop(0.6, 'rgba(255, 255, 255, 0.15)');
-        gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
-      }
-
-      ctx.save();
-      ctx.fillStyle = gradient;
-      ctx.beginPath();
-
-      // Organic pulsating fluid curve
-      const points = 32;
-      for (let i = 0; i <= points; i++) {
-        const angle = (i / points) * Math.PI * 2;
-        const distortion = Math.sin(angle * 3 + phase) * (10 + volume * 30) +
-                           Math.cos(angle * 5 - phase * 1.5) * (6 + volume * 20);
-        const r = baseRadius + distortion;
-        const x = centerX + Math.cos(angle) * r;
-        const y = centerY + Math.sin(angle) * r;
-        if (i === 0) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
-      }
-      ctx.closePath();
-      ctx.fill();
-
-      // Subtle inner core
-      ctx.beginPath();
-      ctx.arc(centerX, centerY, baseRadius * 0.4, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
-      ctx.fill();
-      ctx.restore();
-
-      animationFrameRef.current = requestAnimationFrame(render);
-    };
-
-    render();
-
-    return () => {
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);
-      }
-    };
-  }, [isOpen, status]);
-
   // Initial auto-start when opened
   useEffect(() => {
     if (isOpen) {
@@ -405,18 +309,30 @@ export default function VoiceAssistantModal({
           </div>
         </div>
 
-        {/* Dynamic Glowing Siri Visualizer */}
-        <div className="relative flex flex-col items-center justify-center my-6 cursor-pointer" onClick={status === 'speaking' ? interrupt : startListening}>
-          <canvas
-            ref={canvasRef}
-            width={280}
-            height={280}
-            className="rounded-full drop-shadow-[0_0_40px_rgba(212,175,55,0.25)]"
-          />
-          <span className="mt-3 text-xs font-medium tracking-wide text-white/50">
-            {status === 'listening' && 'Listening to you...'}
+        {/* Voice-Powered 3D Shader Orb */}
+        <div
+          className="relative flex flex-col items-center justify-center my-4 cursor-pointer group"
+          onClick={
+            status === 'speaking'
+              ? interrupt
+              : status === 'listening'
+              ? () => mediaRecorderRef.current?.stop()
+              : status === 'idle'
+              ? startListening
+              : undefined
+          }
+        >
+          <div className="w-64 h-64 sm:w-72 sm:h-72 relative rounded-3xl overflow-hidden shadow-[0_0_50px_rgba(212,175,55,0.18)] border border-white/10 bg-black/40">
+            <VoicePoweredOrb
+              enableVoiceControl={status === 'listening'}
+              hue={status === 'speaking' ? 140 : status === 'thinking' ? 240 : 35}
+              className="w-full h-full"
+            />
+          </div>
+          <span className="mt-3 text-xs font-medium tracking-wide text-white/60 group-hover:text-white/80 transition-colors">
+            {status === 'listening' && 'Listening to you... (Tap orb when done)'}
             {status === 'thinking' && 'Synthesizing thought...'}
-            {status === 'speaking' && 'Speaking — Tap to interrupt'}
+            {status === 'speaking' && 'Speaking — Tap orb to interrupt'}
             {status === 'idle' && 'Tap orb to speak'}
           </span>
         </div>
