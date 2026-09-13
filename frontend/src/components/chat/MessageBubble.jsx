@@ -2,7 +2,6 @@ import { useContext, useEffect, useRef, useState } from "react";
 import CodeBlock from "./CodeBlock";
 import PragnaCanvas from "../canvas/PragnaCanvas";
 import { API_BASE } from "../../api/api";
-import { cleanTextForSpeech } from "../../utils/language";
 import pragnaShield from "../../assets/pragna-shield-icon.png";
 import { ChatContext } from "../../context/ChatContext";
 import {
