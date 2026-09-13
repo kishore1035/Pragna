@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     chat_model: str = "gemma4:cloud"
     embed_model: str = "nomic-embed-text"
     rag_similarity_threshold: float = 0.5
-    db_path: str = "data/argus.db"
+    db_path: str = "data/pragna.db"
     chroma_path: str = "data/chroma_db"
     documents_dir: str = "data/documents"
     jwt_secret: str

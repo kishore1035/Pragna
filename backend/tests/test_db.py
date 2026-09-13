@@ -2,7 +2,7 @@ from app.db import init_db, get_connection
 
 
 def test_init_db_creates_tables(tmp_path):
-    db_path = str(tmp_path / "mimir.db")
+    db_path = str(tmp_path / "pragna.db")
     init_db(db_path)
     conn = get_connection(db_path)
     tables = {
@@ -16,7 +16,7 @@ def test_init_db_creates_tables(tmp_path):
 
 
 def test_get_connection_row_factory(tmp_path):
-    db_path = str(tmp_path / "mimir.db")
+    db_path = str(tmp_path / "pragna.db")
     init_db(db_path)
     conn = get_connection(db_path)
     conn.execute(
@@ -32,7 +32,7 @@ def test_get_connection_row_factory(tmp_path):
 def test_init_db_adds_user_id_to_existing_conversations_table(tmp_path):
     import sqlite3
 
-    db_path = str(tmp_path / "mimir.db")
+    db_path = str(tmp_path / "pragna.db")
     # Simulate a pre-auth database: conversations table with no user_id column.
     conn = sqlite3.connect(db_path)
     conn.execute(
@@ -55,7 +55,7 @@ def test_init_db_adds_user_id_to_existing_conversations_table(tmp_path):
 def test_init_db_makes_password_hash_nullable_and_adds_oauth_columns(tmp_path):
     import sqlite3
 
-    db_path = str(tmp_path / "mimir.db")
+    db_path = str(tmp_path / "pragna.db")
     # Simulate the pre-OAuth users table: password_hash NOT NULL, no OAuth columns.
     conn = sqlite3.connect(db_path)
     conn.execute(
