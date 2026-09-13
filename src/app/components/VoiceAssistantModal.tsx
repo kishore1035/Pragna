@@ -149,10 +149,12 @@ export default function VoiceAssistantModal({
     }
   }, [interrupt, triggerHaptic]);
 
-  // Handle captured audio blob -> send for transcription & response
+  // Handle captured audio blob -> send for transcription & AI response
   const handleAudioCaptured = async (audioBlob: Blob) => {
     setStatus('thinking');
+    setAssistantReply('');
     try {
+      // 1. Transcribe audio via /api/voice/stt
       const transcript = await transcribeAudio(audioBlob);
       if (!transcript.trim()) {
         setStatus('idle');
@@ -161,40 +163,57 @@ export default function VoiceAssistantModal({
       setUserTranscript(transcript);
       triggerHaptic(15);
 
-      // Synthesize response speech
-      const res = await fetch(`/api/chat`, {
+      // Also notify parent to send message to chat if callback provided
+      if (onSendMessage) {
+        onSendMessage(transcript);
+      }
+
+      // 2. Call the main /api/chat endpoint with correct OpenAI messages format
+      const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          conversation_id: conversationId || undefined,
-          user_message: transcript,
-          model: 'gemma4:cloud',
+          messages: [{ role: 'user', content: transcript }],
+          model: 'deepseek-chat',
+          temperature: 0.7,
+          max_tokens: 1000,
+          enableTools: false,
+          systemPrompt: 'You are a concise voice assistant. Keep answers short and conversational (2-3 sentences max) since the user is listening, not reading.',
         }),
       });
 
+      // 3. Parse SSE stream — format is: data: {"choices":[{"delta":{"content":"..."}}]}
       let fullText = '';
-      if (res.body) {
+      if (res.ok && res.body) {
         const reader = res.body.getReader();
         const decoder = new TextDecoder();
+        let buffer = '';
         while (true) {
           const { value, done } = await reader.read();
           if (done) break;
-          const chunk = decoder.decode(value, { stream: true });
-          const lines = chunk.split('\n');
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() ?? '';
           for (const line of lines) {
-            if (line.startsWith('data: ')) {
+            const trimmed = line.trim();
+            if (!trimmed || trimmed === 'data: [DONE]') continue;
+            if (trimmed.startsWith('data: ')) {
               try {
-                const data = JSON.parse(line.slice(6));
-                if (data.type === 'token') {
-                  fullText += data.token;
-                  setAssistantReply((prev) => prev + data.token);
+                const data = JSON.parse(trimmed.slice(6));
+                const delta = data.choices?.[0]?.delta?.content ?? '';
+                if (delta) {
+                  fullText += delta;
+                  setAssistantReply((prev) => prev + delta);
                 }
               } catch {}
             }
           }
         }
+      } else if (!res.ok) {
+        throw new Error(`Chat API error: ${res.status}`);
       }
 
+      // 4. Play response via TTS (falls back to Web Speech API if backend TTS unavailable)
       if (fullText.trim()) {
         playAssistantSpeech(fullText);
       } else {
@@ -207,46 +226,57 @@ export default function VoiceAssistantModal({
     }
   };
 
-  // Play synthesized assistant speech with audio visualizer
+  // Play synthesized assistant speech — tries backend TTS, falls back to Web Speech API
   const playAssistantSpeech = async (text: string) => {
     setStatus('speaking');
     try {
+      // Try backend TTS first
       const audioBlob = await synthesizeSpeech(text, selectedVoice);
       const audioUrl = URL.createObjectURL(audioBlob);
       const audio = new Audio(audioUrl);
       activeAudioRef.current = audio;
 
-      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-      if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
-        const source = audioContextRef.current.createMediaElementSource(audio);
-        const analyser = audioContextRef.current.createAnalyser();
-        analyser.fftSize = 256;
-        source.connect(analyser);
-        analyser.connect(audioContextRef.current.destination);
-        analyserRef.current = analyser;
-      }
-
       audio.onended = () => {
+        URL.revokeObjectURL(audioUrl);
         setStatus('idle');
         activeAudioRef.current = null;
         triggerHaptic(10);
         if (isHandsFree) {
-          setTimeout(() => {
-            startListening();
-          }, 600);
+          setTimeout(() => startListening(), 600);
         }
       };
-
       audio.onerror = () => {
-        setStatus('idle');
-        activeAudioRef.current = null;
+        URL.revokeObjectURL(audioUrl);
+        // Fallback to Web Speech API
+        speakWithBrowser(text);
       };
-
       await audio.play();
-    } catch (err) {
-      console.error('TTS playback error:', err);
-      setStatus('idle');
+    } catch {
+      // Backend TTS unavailable — use browser Web Speech API
+      speakWithBrowser(text);
     }
+  };
+
+  // Fallback: browser-native text-to-speech
+  const speakWithBrowser = (text: string) => {
+    if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
+      setStatus('idle');
+      return;
+    }
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.rate = 1.05;
+    utterance.pitch = 1;
+    utterance.volume = 1;
+    utterance.onend = () => {
+      setStatus('idle');
+      triggerHaptic(10);
+      if (isHandsFree) {
+        setTimeout(() => startListening(), 600);
+      }
+    };
+    utterance.onerror = () => setStatus('idle');
+    window.speechSynthesis.speak(utterance);
   };
 
   // Initial auto-start when opened
