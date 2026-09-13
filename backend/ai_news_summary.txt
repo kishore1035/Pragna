@@ -1,0 +1,9 @@
+AI News Summary - August 17, 2026
+
+Key Developments:
+1. Model Economics: Significant price cuts across major AI models and a shift toward agent-driven automation.
+2. New Models: OpenAI has introduced 'Astra', a model specifically designed for math-proving capabilities.
+3. Regulatory Shifts: New AI rules in the EU and California are reshaping how companies purchase and deploy AI.
+4. Global Investment: India has launched a ₹500-crore AI fund to boost domestic development.
+5. Market Volatility: Reports indicate major financial losses for some firms (e.g., Jane Street) due to leveraged bets on AI trades.
+6. Trends: Wider rollout of AI agents, longer context windows, and advancements in AI media generation.

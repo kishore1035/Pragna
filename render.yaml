@@ -1,0 +1,83 @@
+services:
+  - type: web
+    name: mimir-backend
+    runtime: docker
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+    plan: starter
+    healthCheckPath: /health
+    disk:
+      name: mimir-data
+      mountPath: /data
+      sizeGB: 5
+    envVars:
+      - key: PYTHONUNBUFFERED
+        value: "1"
+      - key: DB_PATH
+        value: /data/mimir.db
+      - key: CHROMA_PATH
+        value: /data/chroma_db
+      - key: DOCUMENTS_DIR
+        value: /data/documents
+      - key: RAG_SIMILARITY_THRESHOLD
+        value: "0.5"
+      - key: OLLAMA_URL
+        sync: false
+      - key: CHAT_MODEL
+        sync: false
+      - key: EMBED_MODEL
+        sync: false
+      - key: OLLAMA_API_KEY
+        sync: false
+      - key: OLLAMA_API_KEYS
+        sync: false
+      - key: OLLAMA_API_KEY_1
+        sync: false
+      - key: OLLAMA_API_KEY_2
+        sync: false
+      - key: OLLAMA_API_KEY_3
+        sync: false
+      - key: OLLAMA_API_KEY_4
+        sync: false
+      - key: OLLAMA_API_KEY_5
+        sync: false
+      - key: OLLAMA_API_KEY_6
+        sync: false
+      - key: OLLAMA_API_KEY_7
+        sync: false
+      - key: OLLAMA_API_KEY_8
+        sync: false
+      - key: OLLAMA_API_KEY_9
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: BRAVE_SEARCH_API_KEY
+        sync: false
+      - key: STABILITY_API_KEY
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: GITHUB_CLIENT_ID
+        sync: false
+      - key: GITHUB_CLIENT_SECRET
+        sync: false
+      - key: BACKEND_PUBLIC_URL
+        sync: false
+      - key: FRONTEND_PUBLIC_URL
+        sync: false
+
+  - type: web
+    name: mimir-frontend
+    runtime: node
+    rootDir: chatbot-ui
+    plan: starter
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    healthCheckPath: /
+    envVars:
+      - key: NEXT_PUBLIC_API_BASE_URL
+        sync: false
+      - key: NODE_VERSION
+        value: "20"

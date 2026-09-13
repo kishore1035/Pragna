@@ -5,6 +5,7 @@ import Sidebar from './Sidebar';
 import ChatWindow from './ChatWindow';
 import ArtifactPanel from './ArtifactPanel';
 import CommandPalette from './CommandPalette';
+import VoiceAssistantModal from './VoiceAssistantModal';
 import ToolsPanel from './ToolsPanel';
 import { Conversation, Message, ModelOption } from '../types/chat';
 import { generateId, getConversationTitle, groupConversationsByDate } from '../utils/chatUtils';
@@ -59,6 +60,7 @@ export default function ChatInterface() {
   const [artifactOpen, setArtifactOpen] = useState(false);
   const [activeArtifact, setActiveArtifact] = useState<{ title: string; content: string; language?: string } | null>(null);
   const [cmdPaletteOpen, setCmdPaletteOpen] = useState(false);
+  const [voiceModalOpen, setVoiceModalOpen] = useState(false);
   const [toolsPanelOpen, setToolsPanelOpen] = useState(false);
 
   const handleOpenArtifact = useCallback((title: string, content: string, language?: string) => {
@@ -403,6 +405,7 @@ export default function ChatInterface() {
         theme={theme}
         onToggleTheme={toggleTheme}
         onOpenArtifacts={() => setArtifactOpen(p => !p)}
+        onOpenVoice={() => setVoiceModalOpen(true)}
         onOpenTools={() => setToolsPanelOpen(true)}
         onOpenSearch={() => setCmdPaletteOpen(true)}
       />
@@ -422,6 +425,7 @@ export default function ChatInterface() {
           onToggleArtifact={() => setArtifactOpen(p => !p)}
           isArtifactOpen={artifactOpen}
           onOpenCommandPalette={() => setCmdPaletteOpen(true)}
+          onOpenVoiceAssistant={() => setVoiceModalOpen(true)}
           onOpenTools={() => setToolsPanelOpen(true)}
         />
         {/* Live Claude-style Artifact side panel */}
@@ -438,6 +442,16 @@ export default function ChatInterface() {
       <CommandPalette
         open={cmdPaletteOpen}
         onClose={() => setCmdPaletteOpen(false)}
+      />
+
+      {/* Voice Assistant Modal */}
+      <VoiceAssistantModal
+        isOpen={voiceModalOpen}
+        onClose={() => setVoiceModalOpen(false)}
+        onSendMessage={(text) => {
+          setVoiceModalOpen(false);
+          sendMessage(text);
+        }}
       />
 
       {/* Tools & Skills Modal */}
