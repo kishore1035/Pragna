@@ -110,9 +110,14 @@ export default function Sidebar({
         <div className="flex flex-col h-full w-[260px]">
           {/* Header */}
           <div className="flex items-center justify-between px-3 py-3 flex-shrink-0">
-            <div className="flex items-center gap-2">
-              <AppLogo size={26} />
-              <span className="font-semibold text-sm text-foreground tracking-tight">ClaudeChat</span>
+            <div className="flex items-center gap-2.5">
+              <AppLogo size={28} variant="shield" />
+              <div className="flex items-center gap-1.5">
+                <span className="font-bold text-sm text-foreground tracking-tight">Pragna</span>
+                <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-primary/15 text-primary border border-primary/25">
+                  AI
+                </span>
+              </div>
             </div>
             <button
               onClick={onToggle}
@@ -127,11 +132,11 @@ export default function Sidebar({
           <div className="px-3 pb-2 flex-shrink-0">
             <button
               onClick={onNewConversation}
-              className="flex items-center gap-2 w-full px-3 py-2.5 rounded-xl text-sm font-medium
-                text-foreground bg-primary/10 hover:bg-primary/15 border border-primary/20
-                transition-all duration-150 active:scale-[0.98] group"
+              className="flex items-center justify-center gap-2 w-full px-3 py-2.5 rounded-xl text-sm font-semibold
+                gold-gradient-btn hover:opacity-95 active:scale-[0.98]
+                transition-all duration-150 shadow-sm"
             >
-              <Plus size={15} className="text-primary flex-shrink-0" />
+              <Plus size={15} className="text-[#1a1405] flex-shrink-0" strokeWidth={2.5} />
               <span>New chat</span>
             </button>
           </div>
@@ -313,10 +318,10 @@ function ConversationItem({
   return (
     <div
       className={`
-        group relative flex items-center gap-2 w-full px-2.5 py-2 rounded-xl text-sm cursor-pointer
-        transition-all duration-100
+        group relative flex items-center gap-2 px-2.5 py-1.5 rounded-lg
+        text-left transition-all duration-150 cursor-pointer
         ${isActive
-          ? 'bg-sidebar-active text-foreground'
+          ? 'bg-primary/15 text-primary border border-primary/25 font-medium'
           : 'text-muted-foreground hover:text-foreground hover:bg-sidebar-hover'
         }
       `}
@@ -325,8 +330,8 @@ function ConversationItem({
       onMouseLeave={() => onHover(null)}
     >
       {/* Active indicator */}
-      {isActive && hasMessages && (
-        <div className="w-1 h-1 rounded-full bg-primary flex-shrink-0" />
+      {isActive && (
+        <div className="w-1.5 h-1.5 rounded-full bg-primary flex-shrink-0 shadow-[0_0_8px_rgba(212,175,55,0.8)]" />
       )}
 
       {isRenaming ? (

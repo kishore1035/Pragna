@@ -14,10 +14,15 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-  title: 'ClaudeChat — Multi-Model AI Assistant with Artifacts & Tools',
-  description: 'ClaudeChat is a Claude-style AI assistant with live artifacts, voice mode, command palette, tasks, and folder organization.',
+  title: 'Pragna — Intelligence & AI Assistant',
+  description: 'Pragna is an AI reasoning assistant with live artifacts, tools, intelligent workflows, and multi-model capabilities.',
   icons: {
-    icon: [{ url: '/favicon.ico', type: 'image/x-icon' }],
+    icon: [
+      { url: '/favicon.ico', type: 'image/x-icon' },
+      { url: '/favicon-32x32.png', sizes: '32x32', type: 'image/png' },
+      { url: '/favicon-16x16.png', sizes: '16x16', type: 'image/png' },
+    ],
+    apple: [{ url: '/apple-touch-icon.png' }],
   },
 };
 

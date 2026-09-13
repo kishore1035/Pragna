@@ -308,7 +308,7 @@ async function performWebSearch(rawQuery: string): Promise<any> {
 
       // If bodyRegex didn't catch snippets, extract snippets directly
       if (results.length === 0) {
-        const snippetRegex = /<a class="result__snippet[^>]*>(.*?)<\/a>/gs;
+        const snippetRegex = /<a class="result__snippet[^>]*>([\s\S]*?)<\/a>/g;
         let sMatch;
         while ((sMatch = snippetRegex.exec(html)) !== null && results.length < 8) {
           results.push({

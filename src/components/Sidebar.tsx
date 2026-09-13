@@ -81,24 +81,29 @@ export default function Sidebar({ onNavigate }: SidebarProps) {
         collapsed ? 'w-16' : 'w-64'
       }`}
     >
-      {/* Header */}
+      {/* Logo / Brand */}
       <div className="flex items-center h-14 px-3 border-b border-border shrink-0">
         {!collapsed && (
           <Link
             href="/"
-            className="flex items-center gap-3 flex-1 min-w-0"
+            className="flex items-center gap-2.5 flex-1 min-w-0"
             onClick={() => {
               startNewChat();
               onNavigate?.();
             }}
           >
-            <AppLogo size={44} />
-            <span className="font-semibold text-base text-foreground truncate">Argus</span>
+            <AppLogo size={32} variant="shield" />
+            <div className="flex items-center gap-1.5 truncate">
+              <span className="font-bold text-base text-foreground truncate">Pragna</span>
+              <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-primary/15 text-primary border border-primary/25">
+                AI
+              </span>
+            </div>
           </Link>
         )}
         {collapsed && (
           <div className="flex justify-center w-full">
-            <AppLogo size={36} />
+            <AppLogo size={30} variant="shield" />
           </div>
         )}
         <button
@@ -120,8 +125,8 @@ export default function Sidebar({ onNavigate }: SidebarProps) {
             startNewChat();
             onNavigate?.();
           }}
-          className={`flex items-center gap-2 bg-primary text-primary-foreground rounded-lg font-medium text-sm transition-all hover:opacity-90 active:scale-95 ${
-            collapsed ? 'w-10 h-10 justify-center' : 'w-full px-3 py-2'
+          className={`flex items-center gap-2 gold-gradient-btn rounded-xl font-semibold text-sm transition-all hover:opacity-95 active:scale-95 shadow-sm ${
+            collapsed ? 'w-10 h-10 justify-center p-0' : 'w-full px-3 py-2.5 justify-center'
           }`}
           title="New Chat"
         >

@@ -6,6 +6,7 @@ import { Conversation, ModelOption } from '../types/chat';
 import MessageList from './MessageList';
 import ChatInput from './ChatInput';
 import EmptyState from './EmptyState';
+import AppLogo from '@/components/ui/AppLogo';
 
 interface ChatWindowProps {
   conversation: Conversation | null;
@@ -100,7 +101,10 @@ export default function ChatWindow({
             </div>
           ) : (
             !sidebarOpen && (
-              <span className="text-sm font-semibold text-foreground/70 tracking-tight">ClaudeChat</span>
+              <div className="flex items-center gap-2">
+                <AppLogo size={22} variant="shield" />
+                <span className="text-sm font-bold text-foreground tracking-tight">Pragna</span>
+              </div>
             )
           )}
         </div>
@@ -224,8 +228,8 @@ export default function ChatWindow({
               models={models}
               onSelectModel={onSelectModel}
             />
-            <p className="text-center text-[0.6875rem] text-muted-foreground/40 mt-2 tracking-wide">
-              ClaudeChat may make mistakes. Verify important information.
+            <p className="text-center text-[0.6875rem] text-muted-foreground/50 mt-2 tracking-wide">
+              Pragna may make mistakes. Verify important information.
             </p>
           </div>
         </div>

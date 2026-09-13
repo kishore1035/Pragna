@@ -57,7 +57,7 @@ export default function ChatInput({
       className={`
         relative rounded-2xl border bg-card transition-all duration-200
         ${isFocused
-          ? 'border-border shadow-md ring-2 ring-primary/10'
+          ? 'border-primary/40 shadow-premium-sm ring-2 ring-primary/20'
           : 'border-border/70 shadow-sm hover:border-border'
         }
       `}
@@ -78,7 +78,7 @@ export default function ChatInput({
           onKeyDown={handleKeyDown}
           onFocus={() => setIsFocused(true)}
           onBlur={() => setIsFocused(false)}
-          placeholder="Message the assistant..."
+          placeholder="Ask Pragna anything..."
           rows={1}
           className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground/40
             resize-none outline-none leading-relaxed min-h-[26px] max-h-[200px] py-0.5"
@@ -98,7 +98,7 @@ export default function ChatInput({
                 className={`
                   px-3 py-1 rounded-md text-xs font-medium capitalize transition-all duration-150
                   ${activeTab === tab
-                    ? 'bg-card text-foreground shadow-sm border border-border/40'
+                    ? 'bg-card text-foreground shadow-sm border border-border/40 font-semibold'
                     : 'text-muted-foreground hover:text-foreground'
                   }
                 `}
@@ -142,13 +142,13 @@ export default function ChatInput({
                 w-8 h-8 rounded-full flex items-center justify-center
                 transition-all duration-200 active:scale-90 flex-shrink-0
                 ${canSend
-                  ? 'bg-primary hover:bg-primary/90 shadow-sm cursor-pointer'
-                  : 'bg-muted cursor-not-allowed'
+                  ? 'gold-gradient-btn hover:opacity-95 shadow-premium-sm cursor-pointer'
+                  : 'bg-muted cursor-not-allowed opacity-50'
                 }
               `}
               aria-label="Send message"
             >
-              <ArrowUp size={14} className={canSend ? 'text-white' : 'text-muted-foreground/40'} />
+              <ArrowUp size={14} strokeWidth={canSend ? 2.5 : 2} className={canSend ? 'text-[#1a1405]' : 'text-muted-foreground/40'} />
             </button>
           )}
         </div>

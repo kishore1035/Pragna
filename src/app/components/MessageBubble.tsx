@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { Copy, ThumbsUp, ThumbsDown, RotateCcw, Check } from 'lucide-react';
 import { Message } from '../types/chat';
 import MarkdownRenderer from './MarkdownRenderer';
+import AppLogo from '@/components/ui/AppLogo';
 
 interface MessageBubbleProps {
   message: Message;
@@ -91,7 +92,7 @@ export default function MessageBubble({
                   </div>
                 </div>
               )}
-              <div className="px-4 py-3 rounded-2xl user-bubble-bg text-foreground text-sm leading-relaxed">
+              <div className="px-4 py-3 rounded-2xl user-bubble-bg text-foreground text-sm leading-relaxed border border-border/50 shadow-sm">
                 <p className="whitespace-pre-wrap">{message.content}</p>
               </div>
             </div>
@@ -105,13 +106,8 @@ export default function MessageBubble({
         /* Assistant message */
         <div className="message-enter group/msg">
           <div className="flex items-start gap-3">
-            <div className="flex-shrink-0 w-6 h-6 mt-0.5">
-              <svg viewBox="0 0 24 24" fill="none" className="w-6 h-6">
-                <path
-                  d="M12 2L13.8 8.2L20 10L13.8 11.8L12 18L10.2 11.8L4 10L10.2 8.2L12 2Z"
-                  fill="var(--primary)"
-                />
-              </svg>
+            <div className="flex-shrink-0 w-7 h-7 mt-0.5 rounded-lg overflow-hidden flex items-center justify-center bg-card border border-border/70 shadow-sm p-0.5">
+              <AppLogo size={22} variant="shield" />
             </div>
 
             <div className="flex-1 min-w-0">

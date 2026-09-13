@@ -5,6 +5,7 @@ import dynamic from 'next/dynamic';
 import { toast } from 'sonner';
 import { useAuth } from '@/context/AuthContext';
 import { API_BASE } from '@/lib/api';
+import AppLogo from '@/components/ui/AppLogo';
 
 const InteractiveNeuralVortex = dynamic(
   () => import('@/components/ui/interactive-neural-vortex-background'),
@@ -45,11 +46,16 @@ export default function AuthScreen() {
     <div className="relative flex items-center justify-center min-h-screen px-4 overflow-hidden bg-background">
       <InteractiveNeuralVortex />
 
-      <div className="relative z-10 w-full max-w-sm bg-card border border-border rounded-2xl p-6 shadow-xl">
-        <h1 className="text-lg font-semibold text-foreground mb-1">
-          {mode === 'login' ? 'Log in to Argus' : 'Create your Argus account'}
+      <div className="relative z-10 w-full max-w-sm bg-card border border-border rounded-2xl p-6 shadow-premium-lg">
+        <div className="flex items-center justify-center mb-4">
+          <div className="w-12 h-12 rounded-2xl bg-card border border-border shadow-premium-sm flex items-center justify-center p-1">
+            <AppLogo size={32} variant="shield" />
+          </div>
+        </div>
+        <h1 className="text-lg font-bold text-foreground mb-1 text-center">
+          {mode === 'login' ? 'Log in to Pragna' : 'Create your Pragna account'}
         </h1>
-        <p className="text-sm text-muted-foreground mb-5">
+        <p className="text-sm text-muted-foreground mb-5 text-center">
           {mode === 'login'
             ? "Don't have an account yet?"
             : 'Already have an account?'}{' '}
@@ -123,7 +129,7 @@ export default function AuthScreen() {
           <button
             type="submit"
             disabled={submitting}
-            className="w-full py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 disabled:opacity-50 transition-opacity"
+            className="w-full py-2.5 rounded-xl gold-gradient-btn text-sm font-semibold hover:opacity-95 disabled:opacity-50 transition-opacity shadow-sm"
           >
             {submitting ? 'Please wait…' : mode === 'login' ? 'Log in' : 'Create account'}
           </button>

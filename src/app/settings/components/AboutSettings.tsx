@@ -14,17 +14,24 @@ export default function AboutSettings() {
   return (
     <div className="p-6 max-w-2xl">
       <div className="mb-6">
-        <h2 className="text-lg font-semibold text-foreground mb-1">About Argus</h2>
+        <h2 className="text-lg font-semibold text-foreground mb-1">About Pragna</h2>
         <p className="text-sm text-muted-foreground">Version info, credits, and changelog.</p>
       </div>
       {/* App identity */}
       <div className="border border-border rounded-xl p-5 bg-card mb-4 flex items-center gap-4">
-        <AppLogo size={72} />
+        <div className="p-2 rounded-2xl bg-card border border-border shadow-premium-sm flex items-center justify-center">
+          <AppLogo size={56} variant="shield" />
+        </div>
         <div>
-          <h3 className="text-base font-semibold text-foreground">Argus</h3>
-          <p className="text-sm text-muted-foreground">Version 1.4.0 — August 2026</p>
+          <div className="flex items-center gap-2">
+            <h3 className="text-base font-bold text-foreground">Pragna</h3>
+            <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-primary/15 text-primary border border-primary/25">
+              AI
+            </span>
+          </div>
+          <p className="text-sm text-muted-foreground">Version 1.4.0 — Pragna Gold Edition</p>
           <p className="text-xs text-muted-foreground mt-1">
-            A premium multi-model AI reasoning interface. No account required.
+            An advanced AI reasoning interface with dark Obsidian and Gold aesthetic.
           </p>
         </div>
       </div>
