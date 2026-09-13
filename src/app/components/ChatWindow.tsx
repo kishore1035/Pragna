@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useRef, useEffect, useState, useCallback } from 'react';
-import { PanelLeftOpen, Share2, ChevronDown, ArrowDown, Mic, Code2, LayoutGrid, Wrench, Search } from 'lucide-react';
+import { PanelLeftOpen, Share2, ChevronDown, ArrowDown, Code2, LayoutGrid, Wrench, Search } from 'lucide-react';
 import { Conversation, ModelOption } from '../types/chat';
 import MessageList from './MessageList';
 import ChatInput from './ChatInput';
@@ -24,7 +24,6 @@ interface ChatWindowProps {
   onToggleArtifact?: () => void;
   isArtifactOpen?: boolean;
   onOpenCommandPalette?: () => void;
-  onOpenVoiceAssistant?: () => void;
   onOpenTools?: () => void;
 }
 
@@ -43,7 +42,6 @@ export default function ChatWindow({
   onToggleArtifact,
   isArtifactOpen,
   onOpenCommandPalette,
-  onOpenVoiceAssistant,
   onOpenTools,
 }: ChatWindowProps) {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -119,17 +117,6 @@ export default function ChatWindow({
             >
               <Search size={13} />
               <span className="hidden md:inline text-[0.6875rem] font-mono bg-muted-foreground/10 px-1 py-0.5 rounded">⌘K</span>
-            </button>
-          )}
-
-          {/* Voice Assistant */}
-          {onOpenVoiceAssistant && (
-            <button
-              onClick={onOpenVoiceAssistant}
-              className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted border border-border/60 transition-all"
-              title="Voice Assistant"
-            >
-              <Mic size={14} />
             </button>
           )}
 
