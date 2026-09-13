@@ -83,35 +83,25 @@ export default function ModelSelector({
                   title={config?.tooltip || `${model.label} — ${model.description}`}
                   aria-label={config?.tooltip || model.label}
                   data-ascii={config?.asciiFallback}
-                  className={`flex items-start gap-2.5 w-full px-2.5 py-2 rounded-lg text-sm transition-colors duration-100 text-left ${
-                    isSelected ? 'bg-primary/15 text-primary' : 'hover:bg-muted text-foreground'
+                  className={`flex items-center gap-2.5 w-full px-2.5 py-1.5 rounded-lg text-sm transition-colors duration-100 text-left ${
+                    isSelected ? 'bg-primary/15 text-primary font-semibold' : 'hover:bg-muted text-foreground'
                   }`}
                 >
-                  <span className="text-primary flex-shrink-0 mt-0.5">
+                  <span className="text-primary flex-shrink-0">
                     {MODEL_ICONS[model.id] ?? <Brain size={13} />}
                   </span>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-1.5">
-                      <p className="font-medium text-foreground text-xs truncate">
-                        {config?.displayName ?? model.label}
-                      </p>
-                      {config?.sanskritScript && (
-                        <span className="text-[11px] text-muted-foreground/60 font-serif">
-                          ({config.sanskritScript})
-                        </span>
-                      )}
-                      {config?.badge && (
-                        <span className="text-[9px] font-semibold px-1.5 py-0.2 rounded bg-primary/15 text-primary border border-primary/25 ml-auto flex-shrink-0">
-                          {config.badge}
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-[10.5px] text-muted-foreground/70 truncate mt-0.5">
-                      {config?.subtitle ?? model.description}
+                  <div className="flex-1 min-w-0 flex items-center justify-between gap-1.5">
+                    <p className="font-medium text-foreground text-xs truncate">
+                      {config?.displayName ?? model.label}
                     </p>
+                    {config?.badge && (
+                      <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded bg-primary/15 text-primary border border-primary/25 ml-auto flex-shrink-0">
+                        {config.badge}
+                      </span>
+                    )}
                   </div>
                   {isSelected && (
-                    <Check size={14} className="text-primary flex-shrink-0 mt-1" />
+                    <Check size={14} className="text-primary flex-shrink-0" />
                   )}
                 </button>
               );

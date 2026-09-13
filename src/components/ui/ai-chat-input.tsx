@@ -999,21 +999,13 @@ export const PromptInput = React.forwardRef<HTMLDivElement, PromptInputProps>(
                 <div
                   style={{ transformOrigin: "bottom left", backgroundColor: "var(--card)" }}
                   className={cn(
-                    "absolute bottom-full left-0 mb-2.5 z-50 w-72 sm:w-80 rounded-2xl border border-border bg-card p-2 shadow-premium-lg flex flex-col gap-1 transition-all duration-400 cursor-default",
+                    "absolute bottom-full left-0 mb-2.5 z-50 w-56 sm:w-64 rounded-2xl border border-border bg-card p-1.5 shadow-premium-lg flex flex-col gap-0.5 transition-all duration-400 cursor-default",
                     isModelSelectOpen
                       ? "opacity-100 scale-100 translate-y-0 pointer-events-auto ease-[cubic-bezier(0.34,1.56,0.64,1)]"
                       : "opacity-0 scale-95 translate-y-3 pointer-events-none ease-[cubic-bezier(0.175,0.885,0.32,1.275)]"
                   )}
                 >
-                  <div className="px-2 py-1 flex items-center justify-between border-b border-border/40 mb-0.5">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70">
-                      Model
-                    </span>
-                    <span className="text-[10px] text-muted-foreground/50">
-                      Sanskrit Edition
-                    </span>
-                  </div>
-                  <div className="flex flex-col gap-1">
+                  <div className="flex flex-col gap-0.5">
                     {models.map((model) => {
                       const config = getModelConfig(model);
                       const isSelected =
@@ -1034,55 +1026,43 @@ export const PromptInput = React.forwardRef<HTMLDivElement, PromptInputProps>(
                           aria-label={config?.tooltip || model}
                           data-ascii={config?.asciiFallback}
                           className={cn(
-                            "group relative flex flex-col w-full rounded-xl px-2.5 py-2 text-left outline-none cursor-default transition-all duration-150",
+                            "group relative flex h-8 w-full items-center justify-between rounded-xl px-2.5 text-left outline-none cursor-default transition-all duration-150",
                             isSelected
-                              ? "bg-primary/15 border border-primary/30 shadow-sm text-primary"
+                              ? "bg-primary/15 border border-primary/30 shadow-sm text-primary font-semibold"
                               : "hover:bg-primary/10 text-foreground/80 hover:text-foreground border border-transparent"
                           )}
                         >
-                          <div className="flex items-center justify-between w-full gap-2">
-                            <span className="flex items-center gap-2 min-w-0">
-                              <ModelIcon
-                                model={model}
-                                className="size-3.5 opacity-85 group-hover:opacity-100 transition-opacity flex-shrink-0"
-                              />
-                              <span className="font-semibold text-xs text-foreground tracking-tight">
-                                {config?.displayName || model}
-                              </span>
-                              {config?.sanskritScript && (
-                                <span className="text-[11px] text-muted-foreground/60 font-serif">
-                                  ({config.sanskritScript})
-                                </span>
-                              )}
+                          <span className="flex items-center gap-2 min-w-0">
+                            <ModelIcon
+                              model={model}
+                              className="size-3.5 opacity-85 group-hover:opacity-100 transition-opacity flex-shrink-0"
+                            />
+                            <span className="text-xs tracking-tight truncate">
+                              {config?.displayName || model}
                             </span>
-
-                            <div className="flex items-center gap-1.5 flex-shrink-0">
-                              {config?.badge && (
-                                <span
-                                  className={cn(
-                                    "text-[9px] font-semibold px-1.5 py-0.5 rounded border",
-                                    config.badge === 'ACTIVE' || config.badge === 'Recommended'
-                                      ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/25"
-                                      : config.badge === 'Fast'
-                                      ? "bg-amber-500/15 text-amber-400 border-amber-500/25"
-                                      : config.badge === 'Pro'
-                                      ? "bg-purple-500/15 text-purple-400 border-purple-500/25"
-                                      : "bg-primary/15 text-primary border-primary/25"
-                                  )}
-                                >
-                                  {config.badge}
-                                </span>
-                              )}
-                              {isSelected && (
-                                <span className="w-1.5 h-1.5 rounded-full bg-primary flex-shrink-0 shadow-sm" />
-                              )}
-                            </div>
-                          </div>
-
-                          {/* Subtitle / Meaning + Real Model Mapping */}
-                          <span className="text-[10.5px] text-muted-foreground/70 truncate pl-[22px] mt-0.5 block">
-                            {config?.subtitle || config?.rawName || model}
                           </span>
+
+                          <div className="flex items-center gap-1.5 flex-shrink-0 ml-2">
+                            {config?.badge && (
+                              <span
+                                className={cn(
+                                  "text-[9px] font-semibold px-1.5 py-0.5 rounded border",
+                                  config.badge === 'ACTIVE' || config.badge === 'Recommended'
+                                    ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/25"
+                                    : config.badge === 'Fast'
+                                    ? "bg-amber-500/15 text-amber-400 border-amber-500/25"
+                                    : config.badge === 'Pro'
+                                    ? "bg-purple-500/15 text-purple-400 border-purple-500/25"
+                                    : "bg-primary/15 text-primary border-primary/25"
+                                )}
+                              >
+                                {config.badge}
+                              </span>
+                            )}
+                            {isSelected && (
+                              <span className="w-1.5 h-1.5 rounded-full bg-primary flex-shrink-0 shadow-sm" />
+                            )}
+                          </div>
                         </button>
                       );
                     })}
