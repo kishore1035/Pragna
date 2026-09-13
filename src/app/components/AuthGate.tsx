@@ -17,18 +17,6 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
     return <>{children}</>;
   }
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen bg-background text-sm text-muted-foreground">
-        Loading…
-      </div>
-    );
-  }
-
-  if (!user) {
-    // Allow guest mode for chat, but show notification/banner when needed
-    return <>{children}</>;
-  }
-
+  // Allow guest mode and application interface to render immediately
   return <>{children}</>;
 }

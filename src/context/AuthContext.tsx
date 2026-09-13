@@ -30,10 +30,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setLoading(false);
       return;
     }
+    const timeout = setTimeout(() => {
+      setLoading(false);
+    }, 1500);
+
     fetchMe()
       .then(setUser)
       .catch(() => setAuthToken(null))
-      .finally(() => setLoading(false));
+      .finally(() => {
+        clearTimeout(timeout);
+        setLoading(false);
+      });
+
+    return () => clearTimeout(timeout);
   }, []);
 
   const login = useCallback(async (email: string, password: string) => {

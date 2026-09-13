@@ -5,6 +5,7 @@ import { PanelLeftOpen, Share2, ChevronDown, ArrowDown, Mic, Code2, LayoutGrid, 
 import { Conversation, ModelOption } from '../types/chat';
 import MessageList from './MessageList';
 import ChatInput from './ChatInput';
+import PromptInput from '@/components/ui/ai-chat-input';
 import EmptyState from './EmptyState';
 import AppLogo from '@/components/ui/AppLogo';
 
@@ -218,15 +219,27 @@ export default function ChatWindow({
 
       {/* Input area — only shown when conversation is active */}
       {hasMessages && (
-        <div className="flex-shrink-0 px-4 pb-5 pt-3 border-t border-border/30 bg-background/60 backdrop-blur-sm">
-          <div className="max-w-chat mx-auto">
-            <ChatInput
-              onSendMessage={onSendMessage}
-              onStopStreaming={onStopStreaming}
+        <div className="flex-shrink-0 px-4 pb-4 pt-3 border-t border-border/30 bg-background/80 backdrop-blur-md">
+          <div className="max-w-chat mx-auto flex flex-col items-center">
+            <PromptInput
+              onSubmit={(msg, meta) => {
+                if (meta?.model && onSelectModel) {
+                  const found = models.find(m => m.label === meta.model || m.id === meta.model);
+                  if (found) onSelectModel(found);
+                }
+                onSendMessage(msg);
+              }}
+              placeholder="Reply to Pragna..."
+              initialModel={selectedModel?.label || "DeepSeek V3 (Fast)"}
+              models={models.map(m => m.label)}
+              onModelChange={(modelLabel) => {
+                const found = models.find(m => m.label === modelLabel);
+                if (found && onSelectModel) onSelectModel(found);
+              }}
               isStreaming={isStreaming}
-              selectedModel={selectedModel}
-              models={models}
-              onSelectModel={onSelectModel}
+              onStopStreaming={onStopStreaming}
+              collapsedWidth={440}
+              expandedWidth={720}
             />
             <p className="text-center text-[0.6875rem] text-muted-foreground/50 mt-2 tracking-wide">
               Pragna may make mistakes. Verify important information.

@@ -54,25 +54,68 @@ function MorphingText({ text }: { text: string }) {
 }
 
 function ModelIcon({ model, className }: { model: string; className?: string }) {
+  const lower = (model || "").toLowerCase();
+
+  if (lower.includes("deepseek")) {
+    return (
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className={cn("text-primary", className)} aria-hidden="true">
+        <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    );
+  }
+
+  if (lower.includes("claude") || lower.includes("sonnet") || lower.includes("opus") || lower.includes("haiku")) {
+    return (
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className={cn("text-primary", className)} aria-hidden="true">
+        <circle cx="12" cy="12" r="3.5" fill="currentColor" />
+        <path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.93 4.93l2.12 2.12M16.95 16.95l2.12 2.12M4.93 19.07l2.12-2.12M16.95 7.05l2.12-2.12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      </svg>
+    );
+  }
+
+  if (lower.includes("gemini") || lower.includes("gemma") || lower.includes("google")) {
+    return (
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className={cn("text-primary", className)} aria-hidden="true">
+        <path d="M12 2C12 7.52 7.52 12 2 12c5.52 0 10 4.48 10 10 0-5.52 4.48-10 10-10-5.52 0-10-4.48-10-10z" fill="currentColor" />
+      </svg>
+    );
+  }
+
+  if (lower.includes("nvidia") || lower.includes("nemotron")) {
+    return (
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className={cn("text-primary", className)} aria-hidden="true">
+        <rect x="3" y="3" width="18" height="18" rx="4" stroke="currentColor" strokeWidth="2" />
+        <circle cx="12" cy="12" r="3" fill="currentColor" />
+        <path d="M9 3v2M15 3v2M9 19v2M15 19v2M3 9h2M3 15h2M19 9h2M19 15h2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      </svg>
+    );
+  }
+
   const icons: Record<string, string> = {
-    "Composer 2.5": "https://res.cloudinary.com/drhx7imeb/image/upload/v1781695268/cursor-ai-code-icon_j4vnux.svg",
-    "Gemini 3.5 Flash": "https://res.cloudinary.com/drhx7imeb/image/upload/v1781695268/google-gemini-icon_l6kk5q.svg",
-    "GPT 5.5": "https://res.cloudinary.com/drhx7imeb/image/upload/v1781695269/openai-icon_zozuib.svg",
-    "Opus 4.8": "https://res.cloudinary.com/drhx7imeb/image/upload/v1781695268/Claude_AI_symbol_yqfzlc.svg",
-    "GLM 5.2": "https://res.cloudinary.com/drhx7imeb/image/upload/v1781695269/z-ai-icon_xi4xvo.svg"
+    "Composer 2.5": "https://cdn.21st.dev/assets/mirror/7d/7dc00bc09f225fcda46cbc9c6b669c69c025a231877d6c17baa6a003f04f02b2.svg",
+    "Gemini 3.5 Flash": "https://cdn.21st.dev/assets/mirror/cd/cda2df6631d5fa227de3fa04ed78cf354f910ba92a9f086e7455655c10ad9d09.svg",
+    "GPT 5.5": "https://cdn.21st.dev/assets/mirror/b9/b93fa7942be639a1dae60194ff12141145d7d9fd59581582d6ff23335755f19c.svg",
+    "Opus 4.8": "https://cdn.21st.dev/assets/mirror/5d/5de1221c77cc91e748066fd642ad0eee1c1fa65328814f5178166f901e599709.svg",
+    "GLM 5.2": "https://cdn.21st.dev/assets/mirror/b2/b2a6c0ff63efd8a555edf8a174ea6fcfeca120ac1595a2d461ca11d3ae89276c.svg"
   };
 
-  const filters: Record<string, string> = {
-    "GPT 5.5": "dark:invert", 
-  };
+  if (icons[model]) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img 
+        src={icons[model]} 
+        alt={model} 
+        className={cn("object-contain", className)} 
+      />
+    );
+  }
 
+  // Pragna Golden Shield mark
   return (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img 
-      src={icons[model] || icons["GPT 5.5"]} 
-      alt={model} 
-      className={cn("object-contain", filters[model], className)} 
-    />
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className={cn("text-primary", className)} aria-hidden="true">
+      <path d="M12 2l8 4.5v6c0 5-3.5 9.5-8 11-4.5-1.5-8-6-8-11v-6l8-4.5z" stroke="currentColor" strokeWidth="1.75" strokeLinejoin="round" />
+      <path d="M12 7l4 2.25v3c0 2.5-1.75 4.75-4 5.5-2.25-.75-4-3-4-5.5v-3l4-2.25z" fill="currentColor" opacity={0.85} />
+    </svg>
   );
 }
 
@@ -307,29 +350,52 @@ export interface PromptInputProps {
   value?: string;
   onChange?: (value: string) => void;
   maxAttachments?: number;
+  initialModel?: string;
+  onModelChange?: (model: string) => void;
+  collapsedWidth?: number | string;
+  expandedWidth?: number | string;
+  isStreaming?: boolean;
+  onStopStreaming?: () => void;
 }
 
 export const PromptInput = React.forwardRef<HTMLDivElement, PromptInputProps>(
   (
     {
       onSubmit,
-      placeholder = "Ask anything",
+      placeholder = "Ask Pragna anything...",
       className,
-      models = ["GPT 5.5", "Opus 4.8", "Gemini 3.5 Flash", "Composer 2.5", "GLM 5.2"],
+      models = ["DeepSeek V3 (Fast)", "Claude Sonnet 4.5", "Claude Opus 4.5", "Google Gemma 4 31B", "Nvidia Nemotron 120B"],
       efforts = ["Low", "Medium", "Max Effort"],
       defaultValue = "",
       value: controlledValue,
       onChange,
       maxAttachments = 6,
+      initialModel,
+      onModelChange,
+      collapsedWidth = 420,
+      expandedWidth = 720,
+      isStreaming = false,
+      onStopStreaming,
     },
     ref
   ) => {
     const [expanded, setExpanded] = useState(false);
     const [isSmoothResize, setIsSmoothResize] = useState(false);
     const [localValue, setLocalValue] = useState(defaultValue);
-    const [selectedModel, setSelectedModel] = useState(models[0]);
+    const [selectedModel, setSelectedModel] = useState(initialModel || models[0]);
     const [effortIndex, setEffortIndex] = useState(1);
     const [isModelSelectOpen, setIsModelSelectOpen] = useState(false);
+
+    useEffect(() => {
+      if (initialModel && models.includes(initialModel)) {
+        setSelectedModel(initialModel);
+      }
+    }, [initialModel, models]);
+
+    const handleSelectModel = (model: string) => {
+      setSelectedModel(model);
+      onModelChange?.(model);
+    };
 
     const [attachments, setAttachments] = useState<Attachment[]>([]);
     const [activeAttachment, setActiveAttachment] = useState<{ attachment: Attachment; rect: DOMRect } | null>(null);
@@ -680,13 +746,15 @@ export const PromptInput = React.forwardRef<HTMLDivElement, PromptInputProps>(
     };
 
     // Calculate action button states
-    const showArrow = hasValue && !isRecording;
-    const showStop = isRecording;
-    const showMic = !hasValue && !isRecording;
+    const showStop = isRecording || isStreaming;
+    const showArrow = hasValue && !isRecording && !isStreaming;
+    const showMic = !hasValue && !isRecording && !isStreaming;
 
     const onActionButtonClick = (e: React.MouseEvent) => {
       e.preventDefault();
-      if (isRecording) {
+      if (isStreaming) {
+        onStopStreaming?.();
+      } else if (isRecording) {
         stopRecording();
       } else if (hasValue) {
         handleSubmit();
@@ -706,9 +774,11 @@ export const PromptInput = React.forwardRef<HTMLDivElement, PromptInputProps>(
             internalContainerRef.current = node;
           }}
           onBlur={handleBlur}
-          className={cn("relative flex flex-col w-full", className)}
+          className={cn("relative flex flex-col w-full mx-auto", className)}
           style={{
-            maxWidth: expanded ? 480 : 320,
+            maxWidth: expanded
+              ? (typeof expandedWidth === "number" ? `${expandedWidth}px` : expandedWidth ?? "720px")
+              : (typeof collapsedWidth === "number" ? `${collapsedWidth}px` : collapsedWidth ?? "420px"),
             transition: isSmoothResize ? "max-width 0.15s ease-out" : "max-width 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275)",
           }}
         >
@@ -747,7 +817,7 @@ export const PromptInput = React.forwardRef<HTMLDivElement, PromptInputProps>(
                   ? "transform 0.15s ease-out, opacity 0.15s ease-out"
                   : "transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 0.3s ease-out",
               }}
-              className="border border-border border-b-0 bg-muted rounded-t-2xl px-2 pt-2 pb-1 flex items-start gap-2 overflow-x-auto prompt-scrollbar"
+              className="border border-border/80 border-b-0 bg-card/90 rounded-t-2xl px-2 pt-2 pb-1 flex items-start gap-2 overflow-x-auto prompt-scrollbar"
             >
               {attachments.map((attachment, index) => (
                 <AttachmentThumb
@@ -773,12 +843,13 @@ export const PromptInput = React.forwardRef<HTMLDivElement, PromptInputProps>(
             }}
             style={{
               borderRadius: 24,
-              height: expanded ? containerHeight : 48,
+              height: expanded ? containerHeight : 50,
               transition: isSmoothResize ? SMOOTH_HEIGHT_TRANSITION : SPRING_TRANSITION,
               overflow: expanded ? "visible" : "hidden",
             }}
             className={cn(
-              "relative w-full border border-border bg-card shadow-sm focus-within:border-ring/40 focus-within:ring-1 focus-within:ring-ring/20 hover:border-border/80 z-10",
+              "relative w-full border border-border/80 bg-card/95 backdrop-blur-md shadow-premium-sm transition-colors duration-300",
+              "hover:border-primary/40 focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20 focus-within:shadow-gold-sm z-10",
               expanded ? "cursor-text" : "cursor-default"
             )}
           >
@@ -814,7 +885,7 @@ export const PromptInput = React.forwardRef<HTMLDivElement, PromptInputProps>(
                   : "opacity 0.3s ease-out, transform 0.3s ease-out, height 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275)"
               }}
               className={cn(
-                "prompt-scrollbar absolute top-0 inset-x-0 z-[1] w-full resize-none bg-transparent pl-4 pr-12 py-3.5 text-sm leading-[22px] text-foreground outline-none placeholder:font-medium placeholder:text-muted-foreground/80 cursor-text",
+                "prompt-scrollbar absolute top-0 inset-x-0 z-[1] w-full resize-none bg-transparent pl-4 pr-12 py-3.5 text-sm leading-[22px] text-foreground outline-none placeholder:font-medium placeholder:text-muted-foreground/70 cursor-text",
                 expanded ? "opacity-100 scale-100 translate-y-0" : "opacity-0 scale-95 -translate-y-1 pointer-events-none",
                 isScrolling ? "overflow-y-auto" : "overflow-y-hidden",
                 isRecording && "pointer-events-none"
@@ -840,7 +911,7 @@ export const PromptInput = React.forwardRef<HTMLDivElement, PromptInputProps>(
               onClick={expand}
               style={{ transition: isSmoothResize ? "none" : "all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275)" }}
               className={cn(
-                "absolute inset-x-0 top-0 z-[1] cursor-text pl-4 pr-12 py-[15px] text-left text-sm font-medium leading-[17px] text-muted-foreground/80 outline-none",
+                "absolute inset-x-0 top-0 z-[1] cursor-text pl-4 pr-12 py-[15px] text-left text-sm font-medium leading-[17px] text-muted-foreground/80 hover:text-foreground transition-colors outline-none",
                 !expanded ? "opacity-100 scale-100 translate-y-0" : "opacity-0 scale-105 translate-y-1 pointer-events-none"
               )}
               aria-label="Open prompt input"
@@ -851,7 +922,7 @@ export const PromptInput = React.forwardRef<HTMLDivElement, PromptInputProps>(
             {/* Bottom Actions Wrapper - Hides when recording to make space for visualizer */}
             <div
               className={cn(
-                "absolute bottom-2 left-3 right-12 z-[10] flex items-center gap-0 transition-all duration-300 ease-[cubic-bezier(0.175,0.885,0.32,1.275)]",
+                "absolute bottom-2 left-3 right-12 z-[10] flex items-center gap-1.5 transition-all duration-300 ease-[cubic-bezier(0.175,0.885,0.32,1.275)]",
                 expanded && !isRecording ? "opacity-100 blur-0 translate-y-0 pointer-events-auto" : "opacity-0 blur-sm translate-y-2 pointer-events-none"
               )}
             >
@@ -864,12 +935,12 @@ export const PromptInput = React.forwardRef<HTMLDivElement, PromptInputProps>(
                     setIsModelSelectOpen((prev) => !prev);
                   }}
                   className={cn(
-                    "group flex items-center gap-1 rounded-full px-2 py-1 text-foreground/50 transition-all duration-200 outline-none hover:bg-accent/60 hover:text-foreground cursor-default",
-                    isModelSelectOpen ? "bg-accent/60 text-foreground" : ""
+                    "group flex items-center gap-1.5 rounded-full px-2.5 py-1 text-foreground/70 transition-all duration-200 outline-none hover:bg-primary/15 hover:text-primary cursor-default border border-transparent hover:border-primary/30",
+                    isModelSelectOpen ? "bg-primary/20 text-primary border-primary/40" : ""
                   )}
                   aria-label={`Select model. Current: ${selectedModel}`}
                 >
-                  <ModelIcon model={selectedModel} className="size-3.5 opacity-70 group-hover:opacity-100 transition-opacity" />
+                  <ModelIcon model={selectedModel} className="size-3.5 opacity-80 group-hover:opacity-100 transition-opacity flex-shrink-0" />
                   <span className="text-xs font-semibold select-none transition-colors">
                     <MorphingText text={selectedModel} />
                   </span>
@@ -883,14 +954,14 @@ export const PromptInput = React.forwardRef<HTMLDivElement, PromptInputProps>(
                     }));
                   }}
                   className={cn(
-                    "absolute bottom-full left-0 mb-2.5 z-50 w-44 rounded-2xl border border-border bg-card/95 p-1 shadow-xl backdrop-blur-md flex flex-col gap-0.5 transition-all duration-400 cursor-default",
+                    "absolute bottom-full left-0 mb-2.5 z-50 min-w-48 max-w-64 rounded-2xl border border-border bg-card/98 p-1.5 shadow-premium-lg backdrop-blur-md flex flex-col gap-0.5 transition-all duration-400 cursor-default",
                     isModelSelectOpen
                       ? "opacity-100 scale-100 translate-y-0 pointer-events-auto ease-[cubic-bezier(0.34,1.56,0.64,1)]"
                       : "opacity-0 scale-95 translate-y-3 pointer-events-none ease-[cubic-bezier(0.175,0.885,0.32,1.275)]"
                   )}
                 >
                   <div className="relative flex flex-col gap-0.5">
-                    <div style={hoverStyle} className="absolute left-0 right-0 top-0 h-8 -z-10 rounded-xl bg-accent pointer-events-none" />
+                    <div style={hoverStyle} className="absolute left-0 right-0 top-0 h-8 -z-10 rounded-xl bg-primary/20 pointer-events-none" />
                     {models.map((model, idx) => (
                       <button
                         key={model}
@@ -902,13 +973,19 @@ export const PromptInput = React.forwardRef<HTMLDivElement, PromptInputProps>(
                             transition: prev.opacity === 0 ? "opacity 0.15s ease-out" : "transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 0.15s ease", 
                           }));
                         }}
-                        onClick={(e) => { e.stopPropagation(); setSelectedModel(model); setIsModelSelectOpen(false); }}
-                        className="group relative flex h-8 w-full items-center justify-between rounded-xl px-2.5 py-1.5 text-left text-xs font-medium text-foreground/80 outline-none active:scale-[0.98] cursor-default"
+                        onClick={(e) => { e.stopPropagation(); handleSelectModel(model); setIsModelSelectOpen(false); }}
+                        className={cn(
+                          "group relative flex h-8 w-full items-center justify-between rounded-xl px-2.5 py-1.5 text-left text-xs font-medium outline-none active:scale-[0.98] cursor-default transition-colors",
+                          model === selectedModel ? "text-primary font-semibold" : "text-foreground/80 hover:text-foreground"
+                        )}
                       >
-                        <span className="flex items-center gap-2">
-                          <ModelIcon model={model} className="size-3.5 opacity-85 group-hover:opacity-100 transition-opacity" />
-                          {model}
+                        <span className="flex items-center gap-2 truncate">
+                          <ModelIcon model={model} className="size-3.5 opacity-85 group-hover:opacity-100 transition-opacity flex-shrink-0" />
+                          <span className="truncate">{model}</span>
                         </span>
+                        {model === selectedModel && (
+                          <span className="w-1.5 h-1.5 rounded-full bg-primary flex-shrink-0" />
+                        )}
                       </button>
                     ))}
                   </div>
@@ -917,7 +994,7 @@ export const PromptInput = React.forwardRef<HTMLDivElement, PromptInputProps>(
 
               <button
                 type="button" onMouseDown={(e) => e.preventDefault()} onClick={cycleEffort}
-                className="group flex items-center gap-1 rounded-full px-2 py-1 text-foreground/50 transition-all duration-200 hover:bg-accent/60 hover:text-foreground outline-none cursor-default"
+                className="group flex items-center gap-1.5 rounded-full px-2.5 py-1 text-foreground/70 transition-all duration-200 hover:bg-primary/15 hover:text-primary outline-none cursor-default border border-transparent hover:border-primary/30"
               >
                 <DynamicBarsIcon level={efforts[effortIndex]} />
                 <span className="text-xs font-semibold select-none transition-colors"><MorphingText text={efforts[effortIndex]} /></span>
@@ -925,7 +1002,7 @@ export const PromptInput = React.forwardRef<HTMLDivElement, PromptInputProps>(
 
               <button
                 type="button" onMouseDown={(e) => e.preventDefault()} onClick={openFileChooser} disabled={attachments.length >= maxAttachments}
-                className="ml-auto flex size-7 items-center justify-center rounded-full text-foreground/50 transition-all duration-200 hover:bg-accent/60 hover:text-foreground outline-none cursor-default disabled:opacity-40 disabled:pointer-events-none"
+                className="ml-auto flex size-7 items-center justify-center rounded-full text-foreground/70 transition-all duration-200 hover:bg-primary/15 hover:text-primary outline-none cursor-default disabled:opacity-40 disabled:pointer-events-none"
               >
                 <PlusIcon />
               </button>
@@ -951,9 +1028,14 @@ export const PromptInput = React.forwardRef<HTMLDivElement, PromptInputProps>(
               type="button"
               onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }} 
               onClick={onActionButtonClick}
-              aria-label={showArrow ? "Send prompt" : showStop ? "Stop recording" : "Use voice input"}
+              aria-label={showArrow ? "Send prompt" : showStop ? (isStreaming ? "Stop generating" : "Stop recording") : "Use voice input"}
               style={{ borderRadius: 9999 }}
-              className="absolute right-2 bottom-2 z-[10] flex h-8 w-8 items-center justify-center bg-primary text-primary-foreground transition-all duration-300 hover:opacity-90 outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-default"
+              className={cn(
+                "absolute right-2 bottom-2 z-[10] flex h-8 w-8 items-center justify-center transition-all duration-300 outline-none focus-visible:ring-2 focus-visible:ring-primary cursor-pointer active:scale-95",
+                showStop 
+                  ? "bg-red-500 hover:bg-red-600 text-white shadow-sm"
+                  : "bg-gradient-to-br from-[#e5c76b] via-[#d4af37] to-[#b8860b] text-[#1a1405] shadow-gold-sm hover:brightness-110"
+              )}
             >
               <span className="relative flex h-full w-full items-center justify-center">
                 <span className={cn("absolute inset-0 flex items-center justify-center transition-all duration-300 ease-[cubic-bezier(0.175,0.885,0.32,1.275)]", showArrow ? "opacity-100 scale-100 rotate-0 blur-none" : "opacity-0 scale-50 rotate-45 blur-[1px] pointer-events-none")}>
