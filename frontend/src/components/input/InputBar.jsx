@@ -992,7 +992,17 @@ export default function InputBar() {
             }}
           >
             {/* Left Controls */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? '4px' : '6px', minWidth: 0, flexWrap: 'wrap' }}>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: isMobile ? '4px' : '6px',
+                minWidth: 0,
+                flexWrap: isMobile ? 'nowrap' : 'wrap',
+                overflowX: isMobile ? 'auto' : 'visible',
+                scrollbarWidth: 'none',
+              }}
+            >
               {/* Attach Button */}
               <div style={{ position: 'relative' }} ref={attachMenuRef}>
                 <button

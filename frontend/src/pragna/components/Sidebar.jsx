@@ -9,6 +9,7 @@ import {
   SettingsIcon,
   LogoutIcon,
   PanelCollapseIcon,
+  CloseIcon,
   ChevronDownIcon,
   FolderIcon,
   FolderPlusIcon,
@@ -401,10 +402,10 @@ ${turns}
             type="button"
             onClick={onClose}
             title="Close menu"
-            style={{ padding: '8px', borderRadius: '8px', border: 'none', background: 'transparent', color: 'var(--pragna-text-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
-            className="hover:bg-[var(--pragna-surface-2)] hover:text-[var(--pragna-gold-soft)]"
+            style={{ width: '36px', height: '36px', borderRadius: '8px', border: 'none', background: 'transparent', color: 'var(--pragna-text-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
+            className="hover:bg-[var(--pragna-surface-2)] hover:text-[var(--pragna-gold-soft)] active:scale-95"
           >
-            <PanelCollapseIcon size={18} />
+            <CloseIcon size={18} />
           </button>
         ) : (
           <button

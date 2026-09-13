@@ -718,7 +718,7 @@ const renderContentBlocks = (text, isStreaming, onSendPrompt, openArtifact) => {
 
 // Shared ghost-icon-button styling for the message action row (copy/like/dislike/speak)
 const actionBtnBase =
-  "w-[28px] h-[28px] rounded-lg bg-transparent flex items-center justify-center transition-all duration-150 [&>svg]:w-[15px] [&>svg]:h-[15px] hover:bg-[rgba(212,175,55,0.12)] hover:text-[var(--pragna-gold-soft)] active:scale-90 cursor-pointer";
+  "min-w-[32px] min-h-[32px] w-[32px] h-[32px] sm:w-[28px] sm:h-[28px] rounded-lg bg-transparent flex items-center justify-center transition-all duration-150 [&>svg]:w-[16px] [&>svg]:h-[16px] sm:[&>svg]:w-[15px] sm:[&>svg]:h-[15px] hover:bg-[rgba(212,175,55,0.12)] hover:text-[var(--pragna-gold-soft)] active:scale-90 cursor-pointer touch-manipulation";
 
 const renderAttachments = (attachments, openArtifact) => (
   <div className="flex flex-wrap gap-2 mb-1.5">

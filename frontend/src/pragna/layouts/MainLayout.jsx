@@ -95,14 +95,18 @@ const MainLayout = ({
 
         {/* Mobile Header */}
         {!isDesktop && (
-          <div className="sticky top-0 z-20 bg-surface/80 backdrop-blur-sm border-b border-border px-4 py-3 flex items-center justify-between">
+          <div
+            style={{ paddingTop: 'max(10px, env(safe-area-inset-top))' }}
+            className="sticky top-0 z-20 bg-surface/80 backdrop-blur-sm border-b border-border px-4 pb-2.5 flex items-center justify-between"
+          >
             <button
               onClick={() => setMobileMenuOpen(true)}
+              title="Open menu"
               className="p-2 -ml-2 rounded-lg hover:bg-surface-subtle transition-colors"
             >
               <MenuIcon size={20} color="var(--pragna-text-muted)" />
             </button>
-            <img src={pragnaLogo} alt="Pragna-1 A" className="h-8 w-auto object-contain" />
+            <img src={pragnaLogo} alt="Pragna" className="h-7 w-auto object-contain" />
             <div className="w-8" />
           </div>
         )}

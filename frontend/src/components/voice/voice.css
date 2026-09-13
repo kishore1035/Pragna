@@ -12,6 +12,10 @@
   align-items: center;
   justify-content: space-between;
   padding: clamp(20px, 4vh, 48px) clamp(16px, 4vw, 40px);
+  padding-top: max(clamp(20px, 4vh, 48px), env(safe-area-inset-top));
+  padding-bottom: max(clamp(20px, 4vh, 48px), env(safe-area-inset-bottom));
+  padding-left: max(clamp(16px, 4vw, 40px), env(safe-area-inset-left));
+  padding-right: max(clamp(16px, 4vw, 40px), env(safe-area-inset-right));
   box-sizing: border-box;
   color: #fff;
   font-family: var(--pragna-chat-font, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif);
@@ -122,13 +126,14 @@
   width: 100%;
   max-width: 600px;
   flex: 1;
-  margin: 20px 0;
+  margin: clamp(10px, 2vh, 24px) 0;
 }
 
 .pragna-voice-orb-container {
   position: relative;
-  width: clamp(220px, 35vw, 320px);
-  height: clamp(220px, 35vw, 320px);
+  width: clamp(180px, 35vw, 320px);
+  height: clamp(180px, 35vw, 320px);
+  max-height: 40vh;
   display: flex;
   align-items: center;
   justify-content: center;
