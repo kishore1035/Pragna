@@ -1,5 +1,7 @@
 import { NextRequest } from 'next/server';
 import { AGENT_TOOLS_SCHEMA, executeTool } from '@/lib/agent-tools';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
@@ -65,6 +67,82 @@ function queryNeedsTools(messages: any[]): boolean {
   return triggers.some(t => last.includes(t));
 }
 
+function getPersistentMemories(customUserName?: string): { userName: string; promptBlock: string } {
+  const filePath = path.join(process.cwd(), 'data', 'memories.json');
+  let userName = customUserName || 'Vinay';
+  let memories: string[] = ["User's name is Vinay.", "User is creator and engineer at EtherX Innovations."];
+
+  try {
+    if (fs.existsSync(filePath)) {
+      const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+      if (data.userName) userName = customUserName || data.userName;
+      if (Array.isArray(data.memories) && data.memories.length > 0) memories = data.memories;
+    }
+  } catch (e) {
+    console.error('Error loading memories.json:', e);
+  }
+
+  const memoryLines = memories.map(m => `  • ${m}`).join('\n');
+  const promptBlock = `\n\nUSER IDENTITY & PERSISTENT MEMORY (Always active across all conversations & tabs):
+- User's Name: ${userName}
+- CRITICAL: You are conversing with ${userName}. When the user asks "what's my name", "whats my name", or asks who they are, you must ALWAYS state directly and accurately that their name is ${userName}.
+- NEVER confuse your name (Pragna) with the user's name (${userName}). You are Pragna; the user is ${userName}.
+- Durable facts you remember about ${userName}:
+${memoryLines}`;
+
+  return { userName, promptBlock };
+}
+
+function updateMemoriesFromMessage(content: string) {
+  if (!content) return;
+  const filePath = path.join(process.cwd(), 'data', 'memories.json');
+  let data = { userName: 'Vinay', memories: ["User's name is Vinay.", "User is creator and engineer at EtherX Innovations."] };
+
+  try {
+    if (fs.existsSync(filePath)) {
+      data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+    }
+  } catch (e) {}
+
+  let changed = false;
+  // Check for name extraction
+  const nameMatch = content.match(/\b(?:my name is|i am|call me|i'm)\s+([A-Za-z]{2,20})\b/i);
+  if (nameMatch) {
+    const candidate = nameMatch[1].trim();
+    const invalid = ['a', 'an', 'the', 'here', 'just', 'trying', 'working', 'looking', 'sorry', 'fine', 'good', 'happy', 'busy', 'online', 'curious', 'not', 'asking', 'thinking', 'pragna', 'claude', 'assistant', 'bot'];
+    if (!invalid.includes(candidate.toLowerCase())) {
+      const formatted = candidate.charAt(0).toUpperCase() + candidate.slice(1);
+      data.userName = formatted;
+      const fact = `User's name is ${formatted}.`;
+      if (!data.memories.includes(fact)) {
+        data.memories.unshift(fact);
+      }
+      changed = true;
+    }
+  }
+
+  // Check for remember directives
+  const remMatch = content.match(/\b(?:remember that|please remember|note that|keep in mind that)\s+(.{4,100})/i);
+  if (remMatch) {
+    const fact = remMatch[1].trim().replace(/[.!?]+$/, '');
+    const entry = `User note: ${fact}.`;
+    if (!data.memories.includes(entry)) {
+      data.memories.push(entry);
+      changed = true;
+    }
+  }
+
+  if (changed) {
+    try {
+      const dir = path.dirname(filePath);
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf-8');
+    } catch (e) {
+      console.error('Error saving memories.json:', e);
+    }
+  }
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
@@ -76,6 +154,7 @@ export async function POST(req: NextRequest) {
       apiKey: customApiKey,
       enableTools = true,
       systemPrompt: customSystemPrompt,
+      userName: clientUserName,
     } = body;
 
     const apiKey =
@@ -93,10 +172,19 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Inspect user's last message for durable facts to persist
+    const lastUserMessage = messages[messages.length - 1]?.content || '';
+    updateMemoriesFromMessage(lastUserMessage);
+
+    // Retrieve active persistent memories and inject into system prompt
+    const { promptBlock } = getPersistentMemories(clientUserName);
+    const baseSystemPrompt = customSystemPrompt || SYSTEM_PROMPT;
+    const fullSystemPrompt = `${baseSystemPrompt}${promptBlock}`;
+
     let targetModel = MODEL_MAP[model] || model;
 
     const conversationHistory: any[] = [
-      { role: 'system', content: customSystemPrompt || SYSTEM_PROMPT },
+      { role: 'system', content: fullSystemPrompt },
       ...messages.map((m: any) => ({
         role: m.role,
         content: m.content,

@@ -244,6 +244,20 @@ export default function ChatInterface() {
         customPrompt = null;
       }
 
+      if (typeof window !== 'undefined') {
+        const nameMatch = content.match(/\b(?:my name is|i am|call me|i'm)\s+([A-Za-z]{2,20})\b/i);
+        if (nameMatch) {
+          const candidate = nameMatch[1].trim();
+          const invalid = ['a', 'an', 'the', 'here', 'just', 'trying', 'working', 'looking', 'sorry', 'fine', 'good', 'happy', 'busy', 'online', 'curious', 'not', 'asking', 'thinking', 'pragna', 'claude', 'assistant', 'bot'];
+          if (!invalid.includes(candidate.toLowerCase())) {
+            const formatted = candidate.charAt(0).toUpperCase() + candidate.slice(1);
+            localStorage.setItem('claudechat_user_name', formatted);
+          }
+        }
+      }
+
+      const clientUserName = typeof window !== 'undefined' ? localStorage.getItem('claudechat_user_name') || 'Vinay' : 'Vinay';
+
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -252,6 +266,7 @@ export default function ChatInterface() {
           model: selectedModel.id,
           apiKey: customKey || undefined,
           systemPrompt: customPrompt || undefined,
+          userName: clientUserName,
         }),
       });
 
