@@ -1060,6 +1060,45 @@ export const AGENT_TOOLS_SCHEMA = [
   {
     type: 'function',
     function: {
+      name: 'edit_pdf_document',
+      description:
+        'Surgically edit an existing PDF (.pdf) by modifying its source section structure and rebuilding the file. Append a section, replace a text snippet throughout the document, add a paragraph, or add a table without rewriting unrelated content.',
+      parameters: {
+        type: 'object',
+        properties: {
+          path: { type: 'string', description: 'Path to target .pdf file.' },
+          action: {
+            type: 'string',
+            enum: ['append_section', 'replace_text', 'add_paragraph', 'add_table'],
+            description: 'Action to perform on the PDF.',
+          },
+          heading: { type: 'string', description: 'Section heading (for append_section / add_table).' },
+          paragraphs: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'Paragraphs of text to add.',
+          },
+          bullets: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'Bullet list items to add.',
+          },
+          table: {
+            type: 'array',
+            items: { type: 'array', items: { type: 'string' } },
+            description: '2D matrix of strings for table rows.',
+          },
+          search: { type: 'string', description: 'Text snippet to search for (for replace_text).' },
+          replace: { type: 'string', description: 'Replacement text (for replace_text).' },
+          text: { type: 'string', description: 'Paragraph text to add (for add_paragraph).' },
+        },
+        required: ['path', 'action'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'create_spreadsheet',
       description:
         'Create a formatted Excel spreadsheet (.xlsx) or CSV file with styled headers, custom column widths, alternating zebra row colors, formulas, and multiple sheets.',
@@ -1164,6 +1203,48 @@ export const AGENT_TOOLS_SCHEMA = [
           },
         },
         required: ['title'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'edit_presentation',
+      description:
+        'Surgically edit an existing PowerPoint presentation (.pptx). Add a new slide, update an existing slide by index, or find-and-replace text across all slides.',
+      parameters: {
+        type: 'object',
+        properties: {
+          path: { type: 'string', description: 'Path to target .pptx file.' },
+          action: {
+            type: 'string',
+            enum: ['add_slide', 'update_slide', 'replace_text'],
+            description: 'Action to perform on the presentation.',
+          },
+          slide_index: { type: 'number', description: '0-based slide index to modify (for update_slide).' },
+          title: { type: 'string', description: 'Slide title (for add_slide / update_slide).' },
+          subtitle: { type: 'string', description: 'Subtitle for a title-layout slide (for add_slide).' },
+          layout: { type: 'string', enum: ['title', 'bullet'], description: 'Slide layout (for add_slide).' },
+          bullets: { type: 'array', items: { type: 'string' }, description: 'Bullet points for the slide body.' },
+          search: { type: 'string', description: 'Text snippet to search for (for replace_text).' },
+          replace: { type: 'string', description: 'Replacement text (for replace_text).' },
+        },
+        required: ['path', 'action'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'read_presentation',
+      description:
+        'Read an existing PowerPoint presentation (.pptx) and extract each slide\'s title and bullet text into markdown/JSON.',
+      parameters: {
+        type: 'object',
+        properties: {
+          path: { type: 'string', description: 'Path to .pptx file.' },
+        },
+        required: ['path'],
       },
     },
   },
@@ -2072,6 +2153,39 @@ export async function executeTool(name: string, args: Record<string, any>, authT
         return result;
       }
 
+      case 'edit_pdf_document': {
+        const targetPath = resolveDocPath(args.path);
+        const result = await runDocEngine({
+          action: 'edit_pdf',
+          path: targetPath,
+          sub_action: args.action,
+          heading: args.heading,
+          paragraphs: args.paragraphs,
+          bullets: args.bullets,
+          table: args.table,
+          search: args.search,
+          replace: args.replace,
+          text: args.text,
+        });
+
+        const publicDir = path.resolve(process.cwd(), 'public/generated_docs');
+        const pubCopy = path.join(publicDir, path.basename(targetPath));
+        try {
+          await fs.copyFile(targetPath, pubCopy);
+        } catch {}
+
+        return {
+          success: result.success,
+          path: targetPath,
+          action: args.action,
+          modified: result.modified,
+          download_url: `/generated_docs/${path.basename(targetPath)}`,
+          summary: result.success
+            ? `Successfully edited PDF ${targetPath} via ${args.action}`
+            : `Failed to edit PDF: ${result.error}`,
+        };
+      }
+
       // ── Spreadsheet (.xlsx / .csv) Engine ──────────────────────────────────
       case 'create_spreadsheet': {
         const title = args.title || 'Data Spreadsheet';
@@ -2192,6 +2306,48 @@ export async function executeTool(name: string, args: Record<string, any>, authT
             ? `Created presentation deck "${title}" at ${targetPath}. Downloadable at /generated_docs/${filename}`
             : `Failed to create presentation: ${result.error}`,
         };
+      }
+
+      case 'edit_presentation': {
+        const targetPath = resolveDocPath(args.path);
+        const result = await runDocEngine({
+          action: 'edit_presentation',
+          path: targetPath,
+          sub_action: args.action,
+          slide_index: args.slide_index,
+          title: args.title,
+          subtitle: args.subtitle,
+          layout: args.layout,
+          bullets: args.bullets,
+          search: args.search,
+          replace: args.replace,
+        });
+
+        const publicDir = path.resolve(process.cwd(), 'public/generated_docs');
+        const pubCopy = path.join(publicDir, path.basename(targetPath));
+        try {
+          await fs.copyFile(targetPath, pubCopy);
+        } catch {}
+
+        return {
+          success: result.success,
+          path: targetPath,
+          action: args.action,
+          modified: result.modified,
+          download_url: `/generated_docs/${path.basename(targetPath)}`,
+          summary: result.success
+            ? `Successfully edited presentation ${targetPath} via ${args.action}`
+            : `Failed to edit presentation: ${result.error}`,
+        };
+      }
+
+      case 'read_presentation': {
+        const targetPath = resolveDocPath(args.path);
+        const result = await runDocEngine({
+          action: 'read_presentation',
+          path: targetPath,
+        });
+        return result;
       }
 
       // ── Document Export & Conversion ───────────────────────────────────────
