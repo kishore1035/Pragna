@@ -1,5 +1,31 @@
+import re
 import sqlite3
 from typing import Any
+
+
+def _parse_duration_seconds(expr: str) -> int:
+    """Parse a schedule expression like "10 minutes", "2h", "30s", "in 1 day"
+    into a whole number of seconds. Falls back to treating a bare number as
+    minutes (the common phrasing when a unit is omitted), and to 60s if the
+    expression is unparseable.
+    """
+    text = str(expr).strip().lower()
+    match = re.search(r"(\d+(?:\.\d+)?)\s*(seconds?|secs?|s|minutes?|mins?|m|hours?|hrs?|h|days?|d)?", text)
+    if not match:
+        return 60
+    amount = float(match.group(1))
+    unit = match.group(2) or "minutes"
+    if unit.startswith("s"):
+        multiplier = 1
+    elif unit.startswith("m"):
+        multiplier = 60
+    elif unit.startswith("h"):
+        multiplier = 3600
+    elif unit.startswith("d"):
+        multiplier = 86400
+    else:
+        multiplier = 60
+    return max(1, int(amount * multiplier))
 
 
 def schedule_task(
@@ -63,7 +89,6 @@ def cancel_scheduled_task(conn: sqlite3.Connection, job_id: int) -> dict[str, An
 async def run_scheduled_jobs_worker(conn: sqlite3.Connection):
     """Background loop that polls scheduled_jobs every 2s and fires due jobs into conversation threads."""
     import asyncio
-    import re
     from datetime import datetime, timezone
     from app import repository
 
@@ -79,12 +104,8 @@ async def run_scheduled_jobs_worker(conn: sqlite3.Connection):
 
             for job in jobs:
                 job_id, prompt, expr, conv_id, created_at_str = job
-                
-                # Extract integer seconds from expr e.g. "10s", "30 seconds", "10"
-                duration_sec = 10
-                match = re.search(r"(\d+)", str(expr))
-                if match:
-                    duration_sec = int(match.group(1))
+
+                duration_sec = _parse_duration_seconds(expr)
 
                 # Parse created_at ISO string safely
                 try:

@@ -99,3 +99,13 @@ def list_tasks(conn: sqlite3.Connection, status: str | None = None) -> list[dict
         }
         for r in rows
     ]
+
+
+def delete_task(conn: sqlite3.Connection, task_id: int) -> dict[str, Any]:
+    """Delete a task from the Kanban board."""
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM kanban_tasks WHERE id = ?", (task_id,))
+    conn.commit()
+    if cursor.rowcount == 0:
+        return {"success": False, "error": f"Task #{task_id} not found."}
+    return {"success": True, "task_id": task_id, "summary": f"Deleted task #{task_id}"}

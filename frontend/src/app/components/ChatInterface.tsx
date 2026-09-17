@@ -5,11 +5,13 @@ import Sidebar from './Sidebar';
 import ChatWindow from './ChatWindow';
 import ArtifactPanel from './ArtifactPanel';
 import CommandPalette from './CommandPalette';
-import VoiceAssistantModal from './VoiceAssistantModal';
 import ToolsPanel from './ToolsPanel';
-import { Conversation, Message, ModelOption } from '../types/chat';
+import { Conversation, Message, ModelOption, Source } from '../types/chat';
 import { generateId, getConversationTitle, groupConversationsByDate } from '../utils/chatUtils';
 import { SANSKRIT_MODELS } from '@/lib/modelDisplayNames';
+import { getAuthToken } from '@/lib/api';
+import { useAuth } from '@/context/AuthContext';
+import { toast } from 'sonner';
 
 export const MODELS: ModelOption[] = SANSKRIT_MODELS.map((m) => ({
   id: m.id,
@@ -48,6 +50,7 @@ function loadTheme(): 'dark' | 'light' {
 }
 
 export default function ChatInterface() {
+  const { user } = useAuth();
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -60,7 +63,6 @@ export default function ChatInterface() {
   const [artifactOpen, setArtifactOpen] = useState(false);
   const [activeArtifact, setActiveArtifact] = useState<{ title: string; content: string; language?: string } | null>(null);
   const [cmdPaletteOpen, setCmdPaletteOpen] = useState(false);
-  const [voiceModalOpen, setVoiceModalOpen] = useState(false);
   const [toolsPanelOpen, setToolsPanelOpen] = useState(false);
 
   const handleOpenArtifact = useCallback((title: string, content: string, language?: string) => {
@@ -83,13 +85,88 @@ export default function ChatInterface() {
   // Load from localStorage after mount
   useEffect(() => {
     const savedConvs = loadConversations();
+    // One-time backfill: earlier versions left conversations titled "New conversation"
+    // even after real messages were sent into them. Derive a real title wherever we can.
+    let backfilled = false;
+    const fixedConvs = savedConvs.map(c => {
+      if (c.title !== 'New conversation') return c;
+      const firstUserMsg = c.messages.find(m => m.role === 'user');
+      if (!firstUserMsg) return c;
+      backfilled = true;
+      return { ...c, title: getConversationTitle(firstUserMsg.content) };
+    });
+    if (backfilled) saveConversations(fixedConvs);
+
     const savedActive = localStorage.getItem(ACTIVE_KEY);
     const savedTheme = loadTheme();
-    setConversations(savedConvs);
+    setConversations(fixedConvs);
     setActiveConversationId(savedActive);
     setTheme(savedTheme);
     setMounted(true);
   }, []);
+
+  // Poll scheduled reminders and surface the ones that fired while we weren't
+  // watching (toast + a message dropped into whichever conversation is open).
+  const activeConversationIdRef = React.useRef(activeConversationId);
+  useEffect(() => {
+    activeConversationIdRef.current = activeConversationId;
+  }, [activeConversationId]);
+
+  useEffect(() => {
+    if (!user) return;
+    const seenCompletedIds = new Set<string | number>();
+    let firstPoll = true;
+
+    const poll = async () => {
+      try {
+        const token = getAuthToken();
+        if (!token) return;
+        const res = await fetch('/api/tools/scheduled', { headers: { Authorization: `Bearer ${token}` } });
+        if (!res.ok) return;
+        const data = await res.json();
+        const jobs: any[] = data?.jobs || [];
+        const completed = jobs.filter(j => j.status === 'completed');
+
+        if (firstPoll) {
+          // Don't fire toasts for reminders that already completed before this
+          // tab was open — just establish the baseline.
+          completed.forEach(j => seenCompletedIds.add(j.id));
+          firstPoll = false;
+          return;
+        }
+
+        for (const job of completed) {
+          if (seenCompletedIds.has(job.id)) continue;
+          seenCompletedIds.add(job.id);
+          toast(job.prompt, { icon: '⏰', duration: 10000 });
+
+          const convId = activeConversationIdRef.current;
+          if (convId) {
+            setConversations(prev => {
+              const updated = prev.map(c => {
+                if (c.id !== convId) return c;
+                const reminderMsg: Message = {
+                  id: generateId('msg'),
+                  role: 'assistant',
+                  content: `⏰ **Reminder:** ${job.prompt}`,
+                  timestamp: new Date().toISOString(),
+                };
+                return { ...c, messages: [...c.messages, reminderMsg], updatedAt: new Date().toISOString() };
+              });
+              saveConversations(updated);
+              return updated;
+            });
+          }
+        }
+      } catch {
+        // Network hiccup — just try again on the next tick.
+      }
+    };
+
+    poll();
+    const interval = setInterval(poll, 8000);
+    return () => clearInterval(interval);
+  }, [user]);
 
   // Apply theme to document
   useEffect(() => {
@@ -103,6 +180,29 @@ export default function ChatInterface() {
   }, [theme, mounted]);
 
   const activeConversation = conversations.find(c => c.id === activeConversationId) ?? null;
+
+  const attachSource = useCallback((source: Source) => {
+    setConversations(prev => {
+      const updated = prev.map(c => {
+        if (c.id !== activeConversationIdRef.current) return c;
+        if (c.sources?.some(s => s.id === source.id)) return c;
+        return { ...c, sources: [...(c.sources || []), source] };
+      });
+      saveConversations(updated);
+      return updated;
+    });
+  }, []);
+
+  const removeSource = useCallback((sourceId: number) => {
+    setConversations(prev => {
+      const updated = prev.map(c => {
+        if (c.id !== activeConversationIdRef.current) return c;
+        return { ...c, sources: (c.sources || []).filter(s => s.id !== sourceId) };
+      });
+      saveConversations(updated);
+      return updated;
+    });
+  }, []);
 
   const createNewConversation = useCallback(() => {
     const newConv: Conversation = {
@@ -150,20 +250,25 @@ export default function ChatInterface() {
   }, []);
 
   // Backend integration point: replace simulateStream with real fetch to /api/chat
-  const sendMessage = useCallback(async (content: string) => {
-    if (!content.trim() || isStreaming) return;
+  const sendMessage = useCallback(async (content: string, images?: string[], newSources?: Source[]) => {
+    if ((!content.trim() && !images?.length && !newSources?.length) || isStreaming) return;
+    const titleSource = content.trim() || (images?.length ? 'Shared a photo' : 'Shared a file');
 
     let convId = activeConversationId;
-    let isNewConv = false;
+    // "New conversation" is also true for a conversation pre-created empty by the
+    // "+ New chat" button — not just one created in this very call — so its title
+    // still gets derived from the first real message sent into it.
+    let isNewConv = convId ? conversations.find(c => c.id === convId)?.messages.length === 0 : false;
 
     if (!convId) {
       const newConv: Conversation = {
         id: generateId('conv'),
-        title: getConversationTitle(content),
+        title: getConversationTitle(titleSource),
         messages: [],
         model: selectedModel.id,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
+        sources: newSources?.length ? newSources : undefined,
       };
       convId = newConv.id;
       isNewConv = true;
@@ -174,6 +279,17 @@ export default function ChatInterface() {
       });
       setActiveConversationId(convId);
       localStorage.setItem(ACTIVE_KEY, convId);
+    } else if (newSources?.length) {
+      setConversations(prev => {
+        const updated = prev.map(c => {
+          if (c.id !== convId) return c;
+          const existing = c.sources || [];
+          const merged = [...existing, ...newSources.filter(s => !existing.some(e => e.id === s.id))];
+          return { ...c, sources: merged };
+        });
+        saveConversations(updated);
+        return updated;
+      });
     }
 
     const userMessage: Message = {
@@ -181,6 +297,7 @@ export default function ChatInterface() {
       role: 'user',
       content,
       timestamp: new Date().toISOString(),
+      images,
     };
 
     // Add user message
@@ -191,7 +308,7 @@ export default function ChatInterface() {
         return {
           ...c,
           messages: msgs,
-          title: isNewConv ? getConversationTitle(content) : c.title,
+          title: isNewConv ? getConversationTitle(titleSource) : c.title,
           updatedAt: new Date().toISOString(),
         };
       });
@@ -236,8 +353,16 @@ export default function ChatInterface() {
     let streamedAny = false;
     try {
       const currentConv = conversations.find(c => c.id === convId);
-      const history = (currentConv?.messages || []).map(m => ({ role: m.role, content: m.content }));
-      history.push({ role: 'user', content });
+      const history = (currentConv?.messages || []).map(m => ({ role: m.role, content: m.content, images: m.images }));
+      history.push({ role: 'user', content, images });
+      // currentConv reflects state as of the last render — for a brand-new
+      // conversation created earlier in this same call, its sources won't be
+      // visible there yet, so fold in newSources directly rather than relying
+      // solely on the (stale) conversations lookup.
+      const effectiveSources = [
+        ...(currentConv?.sources || []),
+        ...((newSources || []).filter(s => !(currentConv?.sources || []).some(e => e.id === s.id))),
+      ];
 
       const customKey = typeof window !== 'undefined' ? localStorage.getItem('claudechat_custom_api_key') : null;
       let customPrompt = typeof window !== 'undefined' ? localStorage.getItem('claudechat_system_prompt') : null;
@@ -267,9 +392,13 @@ export default function ChatInterface() {
       const clientUserName = typeof window !== 'undefined' ? localStorage.getItem('claudechat_user_name') || 'Vinay' : 'Vinay';
       const clientUserNickname = typeof window !== 'undefined' ? localStorage.getItem('claudechat_user_nickname') || undefined : undefined;
 
+      const authToken = getAuthToken();
       const response = await fetch('/api/chat', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+        },
         body: JSON.stringify({
           messages: history,
           model: selectedModel.id,
@@ -277,7 +406,12 @@ export default function ChatInterface() {
           systemPrompt: customPrompt || undefined,
           userName: clientUserName,
           userNickname: clientUserNickname,
+          sourceDocumentIds: effectiveSources.length ? effectiveSources.map(s => s.id) : undefined,
         }),
+        // Server-side retries/fallbacks can legitimately take a while; this is a
+        // last-resort ceiling so a fully stuck request still surfaces an error
+        // instead of leaving the UI stuck on "thinking" forever.
+        signal: AbortSignal.timeout(90000),
       });
 
 
@@ -414,7 +548,6 @@ export default function ChatInterface() {
         theme={theme}
         onToggleTheme={toggleTheme}
         onOpenArtifacts={() => setArtifactOpen(p => !p)}
-        onOpenVoice={() => setVoiceModalOpen(true)}
         onOpenTools={() => setToolsPanelOpen(true)}
         onOpenSearch={() => setCmdPaletteOpen(true)}
       />
@@ -434,8 +567,10 @@ export default function ChatInterface() {
           onToggleArtifact={() => setArtifactOpen(p => !p)}
           isArtifactOpen={artifactOpen}
           onOpenCommandPalette={() => setCmdPaletteOpen(true)}
-          onOpenVoiceAssistant={() => setVoiceModalOpen(true)}
           onOpenTools={() => setToolsPanelOpen(true)}
+          sources={activeConversation?.sources}
+          onAttachSource={attachSource}
+          onRemoveSource={removeSource}
         />
         {/* Live Claude-style Artifact side panel */}
         <ArtifactPanel
@@ -451,16 +586,6 @@ export default function ChatInterface() {
       <CommandPalette
         open={cmdPaletteOpen}
         onClose={() => setCmdPaletteOpen(false)}
-      />
-
-      {/* Voice Assistant Modal */}
-      <VoiceAssistantModal
-        isOpen={voiceModalOpen}
-        onClose={() => setVoiceModalOpen(false)}
-        onSendMessage={(text) => {
-          setVoiceModalOpen(false);
-          sendMessage(text);
-        }}
       />
 
       {/* Tools & Skills Modal */}

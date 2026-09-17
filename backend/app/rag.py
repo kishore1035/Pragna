@@ -26,7 +26,34 @@ def extract_text(file_path: Path) -> str:
     if suffix == ".pdf":
         reader = PdfReader(str(file_path))
         return "\n".join(page.extract_text() or "" for page in reader.pages)
-    return file_path.read_text(encoding="utf-8")
+    if suffix == ".docx":
+        from docx import Document
+        doc = Document(str(file_path))
+        parts = [p.text for p in doc.paragraphs if p.text]
+        for table in doc.tables:
+            for row in table.rows:
+                parts.append(" | ".join(cell.text for cell in row.cells))
+        return "\n".join(parts)
+    if suffix == ".xlsx":
+        from openpyxl import load_workbook
+        wb = load_workbook(str(file_path), read_only=True, data_only=True)
+        parts = []
+        for sheet in wb.worksheets:
+            for row in sheet.iter_rows(values_only=True):
+                cells = [str(c) for c in row if c is not None]
+                if cells:
+                    parts.append(" | ".join(cells))
+        return "\n".join(parts)
+    if suffix == ".pptx":
+        from pptx import Presentation
+        prs = Presentation(str(file_path))
+        parts = []
+        for slide in prs.slides:
+            for shape in slide.shapes:
+                if hasattr(shape, "text") and shape.text:
+                    parts.append(shape.text)
+        return "\n".join(parts)
+    return file_path.read_text(encoding="utf-8", errors="ignore")
 
 
 def get_chroma_collection(settings: Settings):

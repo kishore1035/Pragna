@@ -16,13 +16,13 @@ services:
       - DB_PATH=/app/data/argus.db
       - CHROMA_PATH=/app/data/chroma_db
       - DOCUMENTS_DIR=/app/data/documents
-      - JWT_SECRET=${JWT_SECRET:-6e2acf507b8c71a14cae72d13677ac93a747cc2d97d0188ca7c9999d9de95235}
-      - STABILITY_API_KEY=${STABILITY_API_KEY:-sk-80CgzN6VbDfUAAZWnVuJvndHlDDmCWzMTaeqlvgEWT2KkH9N}
+      - JWT_SECRET=${JWT_SECRET:?set JWT_SECRET in .env}
+      - STABILITY_API_KEY=${STABILITY_API_KEY:-}
       - BRAVE_SEARCH_API_KEY=${BRAVE_SEARCH_API_KEY:-}
-      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-814542330227-7r5s094qujff3nsb56dl73udfttgji91.apps.googleusercontent.com}
-      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-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}
-      - GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID:-Ov23lixpoUPbbr7NolpE}
-      - GITHUB_CLIENT_SECRET=${GITHUB_CLIENT_SECRET:-0b885f09623a9119b34237eabf3798e1a159b606}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
+      - GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID:-}
+      - GITHUB_CLIENT_SECRET=${GITHUB_CLIENT_SECRET:-}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:

@@ -118,7 +118,20 @@ export default function MessageBubble({
                 </div>
               )}
               <div className="px-4 py-2.5 rounded-2xl user-bubble-bg text-foreground text-sm leading-relaxed border border-border/50 shadow-sm">
-                <p className="whitespace-pre-wrap">{message.content}</p>
+                {message.images && message.images.length > 0 && (
+                  <div className="flex flex-wrap gap-2 mb-2">
+                    {message.images.map((src, i) => (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        key={i}
+                        src={src}
+                        alt={`Attached photo ${i + 1}`}
+                        className="max-w-[200px] max-h-[200px] rounded-lg object-cover border border-border/50"
+                      />
+                    ))}
+                  </div>
+                )}
+                {message.content && <p className="whitespace-pre-wrap">{message.content}</p>}
               </div>
             </div>
             {/* Inline time */}

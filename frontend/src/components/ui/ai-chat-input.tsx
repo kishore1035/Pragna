@@ -21,6 +21,7 @@ interface Attachment {
   name: string;
   width?: number;
   height?: number;
+  isImage: boolean;
 }
 
 // ----------------------------------------------------------------------
@@ -189,6 +190,15 @@ function CloseIcon() {
   );
 }
 
+function DocFileIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M6 2h9l5 5v15a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1Z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+      <path d="M14 2v5h5" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 function DynamicBarsIcon({ level }: { level: string }) {
   const isMediumOrHigh = level === "Medium" || level === "Max Effort";
   const isHigh = level === "Max Effort";
@@ -233,7 +243,7 @@ function AttachmentThumb({
       onMouseLeave={() => setIsHovered(false)}
       onClick={(e) => {
         e.stopPropagation();
-        if (btnRef.current) {
+        if (attachment.isImage && btnRef.current) {
           onOpen(attachment, btnRef.current.getBoundingClientRect());
         }
       }}
@@ -243,10 +253,17 @@ function AttachmentThumb({
         "transition-transform duration-200 ease-[cubic-bezier(0.175,0.885,0.32,1.275)] hover:scale-[1.04] active:scale-[0.96]",
         "animate-in fade-in slide-in-from-top-3 zoom-in-90 duration-400"
       )}
-      aria-label={`Open preview of ${attachment.name}`}
+      aria-label={attachment.isImage ? `Open preview of ${attachment.name}` : attachment.name}
     >
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={attachment.url} alt={attachment.name} className="size-full object-cover" draggable={false} />
+      {attachment.isImage ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={attachment.url} alt={attachment.name} className="size-full object-cover" draggable={false} />
+      ) : (
+        <div className="size-full flex flex-col items-center justify-center gap-0.5 px-1 text-foreground/70">
+          <DocFileIcon />
+          <span className="text-[8px] leading-tight text-center truncate w-full">{attachment.name}</span>
+        </div>
+      )}
       <span className={cn("absolute inset-0 flex items-start justify-end bg-black/0 transition-colors duration-200", isHovered && "bg-black/25")}>
         <span
           role="button" tabIndex={-1}
@@ -751,29 +768,39 @@ export const PromptInput = React.forwardRef<HTMLDivElement, PromptInputProps>(
       fileInputRef.current?.click();
     };
 
+    const MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024; // 20MB
+
     const handleFilesChosen = async (e: React.ChangeEvent<HTMLInputElement>) => {
-      const files = Array.from(e.target.files ?? []).filter((f) => f.type.startsWith("image/"));
-      e.target.value = ""; 
+      const allFiles = Array.from(e.target.files ?? []);
+      e.target.value = "";
+
+      const oversized = allFiles.filter((f) => f.size > MAX_ATTACHMENT_BYTES);
+      const files = allFiles.filter((f) => f.size <= MAX_ATTACHMENT_BYTES);
+      oversized.forEach((f) => console.warn(`"${f.name}" is too large (max 20MB) and was skipped.`));
 
       if (files.length === 0) return;
       const room = Math.max(0, maxAttachments - attachments.length);
       const accepted = files.slice(0, room);
 
-      if (!expanded) { setIsSmoothResize(false); setExpanded(true); } 
+      if (!expanded) { setIsSmoothResize(false); setExpanded(true); }
       else { setIsSmoothResize(true); }
 
       for (const file of accepted) {
         const url = URL.createObjectURL(file);
-        const img = new Image();
-        img.onload = () => addAttachment(file, url, img.naturalWidth, img.naturalHeight);
-        img.onerror = () => addAttachment(file, url, 800, 600);
-        img.src = url;
+        if (file.type.startsWith("image/")) {
+          const img = new Image();
+          img.onload = () => addAttachment(file, url, true, img.naturalWidth, img.naturalHeight);
+          img.onerror = () => addAttachment(file, url, true, 800, 600);
+          img.src = url;
+        } else {
+          addAttachment(file, url, false);
+        }
       }
     };
 
-    const addAttachment = (file: File, url: string, width: number, height: number) => {
+    const addAttachment = (file: File, url: string, isImage: boolean, width?: number, height?: number) => {
       const id = `${file.name}-${file.lastModified}-${Math.random().toString(36).slice(2, 8)}`;
-      setAttachments((prev) => [...prev, { id, file, url, name: file.name, width, height }]);
+      setAttachments((prev) => [...prev, { id, file, url, name: file.name, width, height, isImage }]);
     };
 
     const removeAttachment = (id: string) => {
@@ -826,7 +853,7 @@ export const PromptInput = React.forwardRef<HTMLDivElement, PromptInputProps>(
           <input
             ref={fileInputRef}
             type="file"
-            accept="image/*"
+            accept="image/*,.pdf,.txt,.md,.docx,.xlsx,.pptx,.csv"
             multiple
             onChange={handleFilesChosen}
             className="hidden"

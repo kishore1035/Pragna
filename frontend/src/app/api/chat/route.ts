@@ -49,9 +49,12 @@ Voice, Tone & Personality (Pragna Standard):
     \`\`\`
   - For \`language="html"\` artifacts specifically, write a complete, self-contained HTML document (starting with <!DOCTYPE html>, with inline CSS/JS) for a live interactive preview.
 - Standard Code Blocks: For short code snippets (≤20 lines), terminal commands, or examples in explanations, use standard markdown code blocks.
-- Document Download Links: When creating Word, PDF, Excel, or PPTX documents, ALWAYS provide the download link: [Download DocumentName.ext](/api/documents/download/DocumentName.ext).
+- Document Download Links: Document tools (create_word_document, create_pdf_document, create_spreadsheet, create_presentation) return a \`download_url\` field — ALWAYS use that exact value verbatim as the link target: [Download DocumentName.ext](download_url). Never invent or guess a different link path.
+- Editing Existing Files: If the user asks to change, add to, or fix a document/spreadsheet/presentation you already created in this conversation, call the matching edit_* tool (edit_word_document, edit_spreadsheet) with \`path\` set to the exact \`download_url\` string that the earlier create_* tool result returned — do not create a new file for an edit request.
 - Diagrams: When generating architectural or flow diagrams, use Mermaid blocks (\`\`\`mermaid).
 - Silent Tool Execution: Execute tools silently in the background. Never output raw JSON objects or textual imitations of tool calls in message prose.
+- Skills — Check Before Acting: Before starting a non-trivial multi-step task (document generation, code generation, research synthesis, or anything you've solved before), silently call skills_list, and if a relevant skill exists, skill_view it and follow its instructions.
+- Skills — Learn After Acting: After completing a non-trivial multi-step task in a way that worked well, or after the user corrects your approach, silently call skill_manage to save or update a skill capturing what worked (or what to avoid) — so the same mistake or rediscovery doesn't happen next time. Skip this for simple one-shot questions.
 - STRICT NO-EMOJI RESTRICTION: Do NOT display or include any emojis anywhere in your replies under any circumstances.`;
 
 
@@ -439,6 +442,9 @@ async function detectAndExecuteWebSearch(messages: any[]): Promise<{ query: stri
 
 export async function POST(req: NextRequest) {
   try {
+    const incomingAuth = req.headers.get('authorization') || '';
+    const userAuthToken = incomingAuth.startsWith('Bearer ') ? incomingAuth.slice(7) : undefined;
+
     const body = await req.json();
     const {
       messages = [],
@@ -449,6 +455,7 @@ export async function POST(req: NextRequest) {
       enableTools = true,
       systemPrompt: customSystemPrompt,
       userName: clientUserName,
+      sourceDocumentIds,
     } = body;
 
     const omniKey = getOmnirouteKey();
@@ -466,12 +473,21 @@ export async function POST(req: NextRequest) {
     const { promptBlock } = getPersistentMemories(clientUserName, body.userNickname);
     refreshMemoriesFromBackend(); // fire-and-forget — updates cache for next request
     let targetModel = MODEL_MAP[model] || model;
+    const hasImages = messages.some((m: any) => Array.isArray(m.images) && m.images.length > 0);
 
     // System prompt removed per user instruction to let the model respond directly
-    const conversationHistory: any[] = messages.map((m: any) => ({
-      role: m.role,
-      content: m.content,
-    }));
+    const conversationHistory: any[] = messages.map((m: any) => {
+      if (Array.isArray(m.images) && m.images.length > 0) {
+        return {
+          role: m.role,
+          content: [
+            { type: 'text', text: m.content || 'Describe this image.' },
+            ...m.images.map((url: string) => ({ type: 'image_url', image_url: { url } })),
+          ],
+        };
+      }
+      return { role: m.role, content: m.content };
+    });
 
     // Real-time automatic web search resolution
     const autoSearch = await detectAndExecuteWebSearch(messages);
@@ -480,6 +496,40 @@ export async function POST(req: NextRequest) {
         role: 'system',
         content: `[VERIFIED REAL-TIME LIVE SEARCH RESULTS for "${autoSearch.query}"]:\n${autoSearch.resultsText}\n\nINSTRUCTION: Answer the user's inquiry directly, accurately, and honestly using these real-time search results. State the facts clearly without preamble or unnecessary disclaimers.`,
       });
+    }
+
+    // Source-grounded retrieval (NotebookLM-style): if the user attached
+    // documents to this conversation, ground the reply in retrieved passages
+    // and require inline [n] citations back to them.
+    if (Array.isArray(sourceDocumentIds) && sourceDocumentIds.length > 0 && lastUserMessage) {
+      try {
+        const ragRes = await fetch('http://localhost:8000/api/tools/rag_search', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query: lastUserMessage, document_ids: sourceDocumentIds, top_k: 6 }),
+          signal: AbortSignal.timeout(15000),
+        });
+        if (ragRes.ok) {
+          const ragData = await ragRes.json();
+          const results: any[] = ragData?.results || [];
+          if (results.length > 0) {
+            const sourceList = results
+              .map((r, i) => `[${i + 1}] (${r.filename}): ${r.snippet}`)
+              .join('\n\n');
+            conversationHistory.push({
+              role: 'system',
+              content: `[ATTACHED SOURCE PASSAGES]:\n${sourceList}\n\nINSTRUCTION: Answer using only the information in these passages where relevant. Cite the passage you used inline with its bracketed number, e.g. [1]. If the passages don't contain the answer, say so plainly instead of guessing.`,
+            });
+          } else {
+            conversationHistory.push({
+              role: 'system',
+              content: `[ATTACHED SOURCES]: The user's document(s) ARE successfully attached and uploaded to this chat — do not tell them to upload the file or claim you have no access to it. However, a search over the document(s) for this specific question returned no closely matching passages. Tell the user plainly that you couldn't find content relevant to this specific question in the attached document(s), and suggest they rephrase the question or ask about a specific section — do not guess at an answer, and do not imply the file itself is missing or needs re-uploading.`,
+            });
+          }
+        }
+      } catch {
+        // RAG backend unreachable — fall through and answer without source grounding.
+      }
     }
 
     const stream = new ReadableStream({
@@ -596,7 +646,25 @@ export async function POST(req: NextRequest) {
             ? 'https://openrouter.ai/api/v1/chat/completions'
             : (omniKey ? 'http://127.0.0.1:20128/v1/chat/completions' : 'https://openrouter.ai/api/v1/chat/completions');
           let authBearer = useOpenRouter ? openRouterKey : (omniKey || openRouterKey);
-          let activeModel = targetModel;
+          // Omniroute has no direct credentials for provider-qualified slugs like
+          // "anthropic/claude-sonnet-4.5" (those are OpenRouter's naming) — it only
+          // resolves its own "auto/*" routing aliases. Use the right slug per endpoint.
+          let activeModel = useOpenRouter ? targetModel : mapOmnirouteModel(model);
+
+          // Images: the real OpenRouter account behind OPENROUTER_API_KEY is at (near)
+          // zero credit balance, so any vision request (image tokens raise the cost
+          // well past a trivial text call) gets rejected with 402 before the model
+          // ever sees the image. Omniroute's own "antigravity/gemini-2.5-flash" model
+          // handles vision for free and works reliably — prefer it for image messages
+          // regardless of which endpoint plain text chats use. (Omniroute's "auto/*"
+          // aliases can't be used for this: they silently force-route any image-bearing
+          // request to a single hardcoded model, ollama-cloud/kimi-k2.6, which is
+          // currently unauthorized/out of credits — so target the working model by name.)
+          if (hasImages && omniKey) {
+            endpointUrl = 'http://127.0.0.1:20128/v1/chat/completions';
+            authBearer = omniKey;
+            activeModel = 'antigravity/gemini-2.5-flash';
+          }
 
           if (authBearer) {
             for (let round = 0; round < MAX_ROUNDS; round++) {
@@ -619,6 +687,7 @@ export async function POST(req: NextRequest) {
                     max_tokens: 1500,
                     stream: true,
                   }),
+                  signal: AbortSignal.timeout(25000),
                 });
               } catch (netErr: any) {
                 console.warn(`Primary endpoint ${endpointUrl} failed:`, netErr.message);
@@ -645,20 +714,24 @@ export async function POST(req: NextRequest) {
                         max_tokens: 1500,
                         stream: true,
                       }),
+                      signal: AbortSignal.timeout(25000),
                     });
                   } catch {}
                 }
               }
 
-              // If model returned 400/402/etc. or failed, retry with deepseek-chat
+              // If model returned 400/402/etc. or failed, retry with a fallback model —
+              // against real OpenRouter only if we actually have a key for it (otherwise
+              // that call is a guaranteed 401 and just wastes the round-trip); against
+              // Omniroute, retry with a different "auto/*" alias on its own gateway.
               if (!res || !res.ok) {
-                if (activeModel !== 'deepseek/deepseek-chat') {
+                if (openRouterKey && activeModel !== 'deepseek/deepseek-chat') {
                   activeModel = 'deepseek/deepseek-chat';
                   try {
                     res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
                       method: 'POST',
                       headers: {
-                        Authorization: `Bearer ${openRouterKey || authBearer}`,
+                        Authorization: `Bearer ${openRouterKey}`,
                         'Content-Type': 'application/json',
                         'HTTP-Referer': 'http://localhost:4028',
                         'X-Title': 'ClaudeChat',
@@ -672,6 +745,30 @@ export async function POST(req: NextRequest) {
                         max_tokens: 1000,
                         stream: true,
                       }),
+                      signal: AbortSignal.timeout(25000),
+                    });
+                  } catch {}
+                } else if (!useOpenRouter && omniKey && activeModel !== 'auto/best-free') {
+                  activeModel = 'auto/best-free';
+                  try {
+                    res = await fetch(endpointUrl, {
+                      method: 'POST',
+                      headers: {
+                        Authorization: `Bearer ${authBearer}`,
+                        'Content-Type': 'application/json',
+                        'HTTP-Referer': 'http://localhost:4028',
+                        'X-Title': 'ClaudeChat',
+                      },
+                      body: JSON.stringify({
+                        model: activeModel,
+                        messages: conversationHistory,
+                        tools: AGENT_TOOLS_SCHEMA,
+                        tool_choice: 'auto',
+                        temperature,
+                        max_tokens: 1000,
+                        stream: true,
+                      }),
+                      signal: AbortSignal.timeout(25000),
                     });
                   } catch {}
                 }
@@ -704,7 +801,7 @@ export async function POST(req: NextRequest) {
                 const toolName = tc.function?.name;
                 let toolArgs: Record<string, any> = {};
                 try { toolArgs = JSON.parse(tc.function?.arguments || '{}'); } catch {}
-                const result = await executeTool(toolName, toolArgs);
+                const result = await executeTool(toolName, toolArgs, userAuthToken);
                 conversationHistory.push({
                   role: 'tool',
                   tool_call_id: tc.id,
@@ -717,6 +814,26 @@ export async function POST(req: NextRequest) {
 
           // 2. Fallback to Cloud Ollama keys if primary did not stream
           if (!streamedSuccess) {
+            // Ollama's API rejects a non-string content field outright (400: "cannot
+            // unmarshal array into ... content of type string"), so OpenAI-style
+            // content-part arrays (text + image_url, used for image attachments)
+            // must be flattened to plain text before falling back to it.
+            const flattenContentForOllama = (content: any): string => {
+              if (typeof content === 'string') return content;
+              if (Array.isArray(content)) {
+                const text = content
+                  .filter((p) => p?.type === 'text')
+                  .map((p) => p.text || '')
+                  .join(' ')
+                  .trim();
+                const imageCount = content.filter((p) => p?.type === 'image_url' || p?.type === 'input_image').length;
+                return imageCount > 0
+                  ? `${text}\n[User attached ${imageCount} image(s) that this fallback model cannot see.]`.trim()
+                  : text;
+              }
+              return '';
+            };
+
             // Flatten conversation history for Ollama compatibility (no tool_call objects)
             const cleanOllamaMessages = conversationHistory.map(m => {
               if (m.role === 'tool') {
@@ -725,7 +842,7 @@ export async function POST(req: NextRequest) {
               if (m.role === 'assistant' && !m.content) {
                 return { role: 'assistant', content: 'Evaluating tool execution...' };
               }
-              return { role: m.role, content: m.content || '' };
+              return { role: m.role, content: flattenContentForOllama(m.content) };
             });
 
             for (const key of ollamaKeys) {

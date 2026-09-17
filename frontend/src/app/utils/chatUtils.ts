@@ -7,6 +7,19 @@ export function generateId(prefix: string): string {
   return `${prefix}-${Date.now()}-${counter}`;
 }
 
+export function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+}
+
+export function filesToDataUrls(files: File[]): Promise<string[]> {
+  return Promise.all(files.map(fileToDataUrl));
+}
+
 export function getConversationTitle(firstMessage: string): string {
   const clean = firstMessage.trim().replace(/\s+/g, ' ');
   if (clean.length <= 40) return clean;

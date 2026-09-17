@@ -1,10 +1,9 @@
 'use client';
 
 import React, { useState } from 'react';
-import { MoreHorizontal, Share2, Download, Pencil, Command, Sun, Moon, Mic, Wrench } from 'lucide-react';
+import { MoreHorizontal, Share2, Download, Pencil, Command, Sun, Moon, Wrench } from 'lucide-react';
 import { toast } from 'sonner';
 import { useChat } from '@/context/ChatContext';
-import VoiceAssistantModal from './VoiceAssistantModal';
 
 interface ChatHeaderProps {
   onOpenCommandPalette?: () => void;
@@ -24,7 +23,6 @@ export default function ChatHeader({ onOpenCommandPalette, onOpenTools }: ChatHe
   const [menuOpen, setMenuOpen] = useState(false);
   const [editing, setEditing] = useState(false);
   const [draftTitle, setDraftTitle] = useState('');
-  const [voiceModalOpen, setVoiceModalOpen] = useState(false);
 
   const activeConversation = conversations.find((c) => c.id === activeConversationId);
   const title = activeConversation?.title ?? 'New conversation';
@@ -160,16 +158,6 @@ export default function ChatHeader({ onOpenCommandPalette, onOpenTools }: ChatHe
             </button>
           )}
 
-          {/* Voice Assistant Trigger */}
-          <button
-            onClick={() => setVoiceModalOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-400/10 border border-amber-400/25 text-amber-300 hover:bg-amber-400/20 active:scale-95 transition-all text-xs font-semibold shadow-[0_0_12px_rgba(212,175,55,0.15)]"
-            title="Open Real-Time Duplex Voice Studio"
-          >
-            <Mic size={14} className="text-amber-300 animate-pulse" />
-            <span className="hidden sm:inline">Voice</span>
-          </button>
-
           {/* Dark mode toggle */}
           <button
             onClick={toggleDarkMode}
@@ -245,12 +233,6 @@ export default function ChatHeader({ onOpenCommandPalette, onOpenTools }: ChatHe
           </div>
         </div>
       </header>
-
-      <VoiceAssistantModal
-        isOpen={voiceModalOpen}
-        onClose={() => setVoiceModalOpen(false)}
-        conversationId={activeConversationId}
-      />
     </>
   );
 }

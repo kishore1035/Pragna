@@ -1,12 +1,15 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { ModelOption } from '../types/chat';
+import { toast } from 'sonner';
+import { ModelOption, Source } from '../types/chat';
+import { filesToDataUrls } from '../utils/chatUtils';
+import { uploadDocument } from '@/lib/api';
 import PromptInput from '@/components/ui/ai-chat-input';
 import AppLogo from '@/components/ui/AppLogo';
 
 interface EmptyStateProps {
-  onSendMessage: (content: string) => void;
+  onSendMessage: (content: string, images?: string[], sources?: Source[]) => void;
   selectedModel: ModelOption;
   models: ModelOption[];
   onSelectModel: (model: ModelOption) => void;
@@ -66,12 +69,30 @@ export default function EmptyState({
         {/* Centered PromptInput with Pragna Theme */}
         <div className="w-full flex justify-center py-2">
           <PromptInput
-            onSubmit={(msg, meta) => {
+            onSubmit={async (msg, meta) => {
               if (meta?.model && onSelectModel) {
                 const found = models.find(m => m.label === meta.model || m.id === meta.model);
                 if (found) onSelectModel(found);
               }
-              onSendMessage(msg);
+
+              const allFiles = meta?.attachments || [];
+              const imageFiles = allFiles.filter(f => f.type.startsWith('image/'));
+              const docFiles = allFiles.filter(f => !f.type.startsWith('image/'));
+
+              const sources: Source[] = [];
+              for (const file of docFiles) {
+                try {
+                  const doc = await uploadDocument(file);
+                  sources.push({ id: doc.id, filename: doc.filename, chunkCount: doc.chunk_count });
+                  toast.success(`Added "${doc.filename}" as a source.`);
+                } catch (err) {
+                  toast.error(err instanceof Error ? err.message : `Failed to attach "${file.name}"`);
+                }
+              }
+
+              const images = imageFiles.length > 0 ? await filesToDataUrls(imageFiles) : undefined;
+              const finalMsg = msg.trim() || (docFiles.length > 0 ? `Take a look at ${docFiles.map(f => f.name).join(', ')}.` : msg);
+              onSendMessage(finalMsg, images, sources.length > 0 ? sources : undefined);
             }}
             placeholder="Ask Pragna anything..."
             initialModel={selectedModel?.label || "Tvarā"}

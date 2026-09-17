@@ -32,6 +32,7 @@ from app.routes import (
     images,
     system,
     agent,
+    browser,
 )
 
 # Populates os.environ from backend/.env -- needed because a few keys
@@ -112,6 +113,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     fastapi_app.include_router(images.router)
     fastapi_app.include_router(system.router)
     fastapi_app.include_router(agent.router)
+    fastapi_app.include_router(browser.router)
     return fastapi_app
 
 

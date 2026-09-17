@@ -278,25 +278,8 @@ async def test_generate_reply_scrubs_malformed_text_after_image_tool(tmp_path):
     assert message["content"] == "Generated an image of: a fox"
 
 
-async def test_generate_reply_system_prompt_includes_current_time(tmp_path):
-    conn = make_conn(tmp_path)
-    captured_messages = []
-
-    async def capturing_chat_stream_events(messages, model, ollama_url, tools=None):
-        captured_messages.extend(messages)
-        yield {"type": "content", "content": "ok"}
-        yield {"type": "done"}
-
-    with patch("app.chat_service.chat_stream_events", new=capturing_chat_stream_events), patch(
-        "app.chat_service.retrieve", new=AsyncMock(return_value=[])
-    ):
-        [
-            event
-            async for event in generate_reply(
-                conn, FakeCollection(), FakeSettings(), None, "what time is it", MODEL, user_id=1
-            )
-        ]
-
-    system_message = next(m for m in captured_messages if m["role"] == "system")
-    assert "Current date and time:" in system_message["content"]
-    assert "UTC" in system_message["content"]
+def test_build_system_prompt_includes_current_time():
+    from app.chat_service import _build_system_prompt
+    prompt = _build_system_prompt([], [])
+    assert "Current date and time:" in prompt
+    assert "UTC" in prompt

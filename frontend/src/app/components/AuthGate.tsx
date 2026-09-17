@@ -17,6 +17,17 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
     return <>{children}</>;
   }
 
-  // Allow guest mode and application interface to render immediately
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-background text-sm text-muted-foreground">
+        Loading…
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <AuthScreen />;
+  }
+
   return <>{children}</>;
 }

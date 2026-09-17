@@ -1,8 +1,10 @@
 'use client';
 
 import React, { useRef, useEffect, useState, useCallback } from 'react';
-import { ArrowUp, Square, Paperclip, Mic } from 'lucide-react';
-import { ModelOption } from '../types/chat';
+import { ArrowUp, Square, Paperclip, X, FileText, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
+import { ModelOption, Source } from '../types/chat';
+import { uploadDocument } from '@/lib/api';
 import ModelSelector from './ModelSelector';
 
 interface ChatInputProps {
@@ -12,7 +14,12 @@ interface ChatInputProps {
   selectedModel: ModelOption;
   models: ModelOption[];
   onSelectModel: (model: ModelOption) => void;
+  sources?: Source[];
+  onAttachSource?: (source: Source) => void;
+  onRemoveSource?: (sourceId: number) => void;
 }
+
+const MAX_UPLOAD_BYTES = 20 * 1024 * 1024; // 20MB
 
 export default function ChatInput({
   onSendMessage,
@@ -21,11 +28,16 @@ export default function ChatInput({
   selectedModel,
   models,
   onSelectModel,
+  sources = [],
+  onAttachSource,
+  onRemoveSource,
 }: ChatInputProps) {
   const [value, setValue] = useState('');
   const [isFocused, setIsFocused] = useState(false);
   const [activeTab, setActiveTab] = useState<'chat' | 'cowork'>('chat');
+  const [uploading, setUploading] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const el = textareaRef.current;
@@ -50,6 +62,29 @@ export default function ChatInput({
     }
   };
 
+  const handleFileSelected = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      e.target.value = ''; // allow re-selecting the same file later
+      if (!file) return;
+      if (file.size > MAX_UPLOAD_BYTES) {
+        toast.error(`"${file.name}" is too large (max 20MB).`);
+        return;
+      }
+      setUploading(true);
+      try {
+        const doc = await uploadDocument(file);
+        onAttachSource?.({ id: doc.id, filename: doc.filename, chunkCount: doc.chunk_count });
+        toast.success(`Added "${doc.filename}" as a source (${doc.chunk_count} chunks indexed).`);
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : 'Upload failed');
+      } finally {
+        setUploading(false);
+      }
+    },
+    [onAttachSource]
+  );
+
   const canSend = value.trim().length > 0 && !isStreaming;
 
   return (
@@ -62,13 +97,44 @@ export default function ChatInput({
         }
       `}
     >
+      {sources.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 px-4 pt-3">
+          {sources.map(source => (
+            <div
+              key={source.id}
+              className="flex items-center gap-1.5 pl-2 pr-1 py-1 rounded-lg bg-muted/60 border border-border/60 text-xs text-foreground"
+            >
+              <FileText size={12} className="text-muted-foreground shrink-0" />
+              <span className="max-w-[160px] truncate">{source.filename}</span>
+              <button
+                onClick={() => onRemoveSource?.(source.id)}
+                className="p-0.5 rounded hover:bg-muted-foreground/20 transition-colors"
+                aria-label={`Remove ${source.filename}`}
+              >
+                <X size={11} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Textarea */}
       <div className="flex items-start gap-2 px-4 pt-3.5 pb-1">
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".pdf,.txt,.md,.docx,.xlsx,.pptx,.csv"
+          className="hidden"
+          onChange={handleFileSelected}
+        />
         <button
-          className="flex-shrink-0 mt-0.5 p-1.5 rounded-lg text-muted-foreground/50 hover:text-muted-foreground hover:bg-muted/60 transition-colors duration-150"
-          aria-label="Attach file"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={uploading}
+          className="flex-shrink-0 mt-0.5 p-1.5 rounded-lg text-muted-foreground/50 hover:text-muted-foreground hover:bg-muted/60 transition-colors duration-150 disabled:opacity-50"
+          aria-label="Attach source file"
+          title="Attach a file as a source"
         >
-          <Paperclip size={15} />
+          {uploading ? <Loader2 size={15} className="animate-spin" /> : <Paperclip size={15} />}
         </button>
 
         <textarea
@@ -117,13 +183,6 @@ export default function ChatInput({
             onSelectModel={onSelectModel}
             compact
           />
-
-          <button
-            className="p-1.5 rounded-lg text-muted-foreground/50 hover:text-muted-foreground hover:bg-muted/60 transition-colors duration-150"
-            aria-label="Voice input"
-          >
-            <Mic size={14} />
-          </button>
 
           {isStreaming ? (
             <button

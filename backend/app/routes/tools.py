@@ -20,6 +20,29 @@ class SearchRequest(BaseModel):
     query: str
 
 
+class RagSearchRequest(BaseModel):
+    query: str
+    document_ids: Optional[list[int]] = None
+    top_k: int = 5
+
+
+@router.post("/api/tools/rag_search")
+async def rag_search(request: Request, body: RagSearchRequest):
+    from app.rag import retrieve
+    settings = request.app.state.settings
+    collection = request.app.state.collection
+    where = {"document_id": {"$in": body.document_ids}} if body.document_ids else None
+    results = await retrieve(
+        body.query,
+        collection,
+        settings.embed_model,
+        settings.ollama_url,
+        top_k=body.top_k,
+        where=where,
+    )
+    return {"success": True, "results": results}
+
+
 @router.post("/api/tools/search")
 async def tool_search(body: SearchRequest):
     from app.tools import perform_web_search
@@ -83,12 +106,79 @@ async def get_kanban_tasks(request: Request, current_user: dict = Depends(get_cu
     return {"tasks": tasks}
 
 
+class KanbanTaskRequest(BaseModel):
+    action: str
+    task_id: Optional[int] = None
+    title: Optional[str] = None
+    description: Optional[str] = None
+    status: Optional[str] = None
+    priority: Optional[str] = None
+    conversation_id: Optional[str] = None
+
+
+@router.post("/api/kanban")
+@router.post("/api/tools/kanban")
+async def post_kanban_task(
+    request: Request, body: KanbanTaskRequest, current_user: dict = Depends(get_current_user)
+):
+    from app import kanban_service
+    conn = request.app.state.conn
+    if body.action == "create":
+        if not body.title:
+            raise HTTPException(status_code=400, detail="title is required to create a task")
+        return kanban_service.create_task(
+            conn,
+            body.title,
+            body.description or "",
+            body.status or "todo",
+            body.priority or "medium",
+            conversation_id=body.conversation_id,
+        )
+    if body.action == "update":
+        if not body.task_id:
+            raise HTTPException(status_code=400, detail="task_id is required to update a task")
+        return kanban_service.update_task(
+            conn, body.task_id, status=body.status, title=body.title, description=body.description
+        )
+    if body.action == "delete":
+        if not body.task_id:
+            raise HTTPException(status_code=400, detail="task_id is required to delete a task")
+        return kanban_service.delete_task(conn, body.task_id)
+    raise HTTPException(status_code=400, detail=f"Unknown action '{body.action}'")
+
+
 @router.get("/api/scheduled-tasks")
 @router.get("/api/tools/scheduled")
 async def get_scheduled_tasks(request: Request, current_user: dict = Depends(get_current_user)):
     from app import cron_service
     jobs = cron_service.list_scheduled_tasks(request.app.state.conn)
     return {"jobs": jobs}
+
+
+class ScheduledTaskRequest(BaseModel):
+    action: str
+    prompt: Optional[str] = None
+    schedule: Optional[str] = None
+    job_id: Optional[int] = None
+    conversation_id: Optional[str] = None
+
+
+@router.post("/api/scheduled-tasks")
+@router.post("/api/tools/scheduled")
+async def post_scheduled_task(
+    request: Request, body: ScheduledTaskRequest, current_user: dict = Depends(get_current_user)
+):
+    from app import cron_service
+    conn = request.app.state.conn
+    if body.action == "create":
+        if not body.prompt or not body.schedule:
+            raise HTTPException(status_code=400, detail="prompt and schedule are required")
+        return cron_service.schedule_task(conn, body.prompt, body.schedule, conversation_id=body.conversation_id)
+    if body.action == "delete" or body.action == "cancel":
+        if not body.job_id:
+            raise HTTPException(status_code=400, detail="job_id is required")
+        return cron_service.cancel_scheduled_task(conn, body.job_id)
+    raise HTTPException(status_code=400, detail=f"Unknown action '{body.action}'")
 
 
 class CreateSkillRequest(BaseModel):

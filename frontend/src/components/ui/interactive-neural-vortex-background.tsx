@@ -71,12 +71,12 @@ const InteractiveNeuralVortex = () => {
         noise += pow(noise, 10.);
         noise = max(.0, noise - .5);
         noise *= (1. - length(vUv - .5));
-        // Cherry Red base (#810100)
-        color = vec3(0.506, 0.004, 0.0);
-        // Replace blue with Maroon (#630000)
-        color = mix(color, vec3(0.388, 0.0, 0.0), 0.45 + 0.25 * sin(2.0 * u_scroll_progress + 1.2));
-        // Add Cotton (#EDEBDD) highlight accent
-        color += vec3(0.929, 0.922, 0.867) * 0.35 * sin(2.0 * u_scroll_progress + 1.5);
+        // Pragna deep gold base (#b8860b)
+        color = vec3(0.722, 0.525, 0.043);
+        // Blend toward primary gold (#d4af37)
+        color = mix(color, vec3(0.831, 0.686, 0.216), 0.45 + 0.25 * sin(2.0 * u_scroll_progress + 1.2));
+        // Add soft gold (#e5c76b) highlight accent
+        color += vec3(0.898, 0.780, 0.420) * 0.35 * sin(2.0 * u_scroll_progress + 1.5);
         color = color * noise;
         gl_FragColor = vec4(color, noise);
       }

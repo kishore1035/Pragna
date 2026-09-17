@@ -5,9 +5,21 @@ import * as path from 'node:path';
 
 const execAsync = promisify(exec);
 
+// A tool that created a file returns download_url like "/generated_docs/foo.docx".
+// If the model echoes that string back as `path` for an edit/read/export call,
+// path.resolve() would treat the leading slash as filesystem-root-absolute — map
+// it back to the real public/generated_docs location instead.
+function resolveDocPath(rawPath: string): string {
+  const publicDir = path.resolve(process.cwd(), 'public', 'generated_docs');
+  if (rawPath.startsWith('/generated_docs/')) {
+    return path.join(publicDir, path.basename(rawPath));
+  }
+  return path.resolve(process.cwd(), rawPath);
+}
+
 async function runDocEngine(payload: any): Promise<any> {
-  const pythonPath = '/home/vinay/claudechat/backend/.venv/bin/python3';
-  const backendDir = '/home/vinay/claudechat/backend';
+  const backendDir = path.resolve(process.cwd(), '..', 'backend');
+  const pythonPath = path.join(backendDir, '.venv', 'bin', 'python3');
   return new Promise((resolve) => {
     try {
       const proc = spawn(pythonPath, ['-m', 'app.document_generator', '--stdin'], {
@@ -43,36 +55,118 @@ async function runDocEngine(payload: any): Promise<any> {
   });
 }
 
-// In-memory stores for session productivity tools
-const memoryStore: Record<string, string> = {
-  user_preferences: 'Prefers concise, accurate responses with live search and markdown code blocks.',
-};
-
-interface TodoItem {
-  id: number;
-  text: string;
-  done: boolean;
+// ── Skills store (file-backed, shared with backend/app/skills_service.py) ───
+function skillsDir(): string {
+  return path.resolve(process.cwd(), '..', 'backend', 'data', 'skills');
 }
-let todoStore: TodoItem[] = [];
 
-interface KanbanItem {
-  id: string;
-  title: string;
-  description?: string;
-  status: 'backlog' | 'todo' | 'in_progress' | 'done';
+function parseSkillFrontmatter(content: string, fallbackName: string): { name: string; description: string } {
+  let name = fallbackName;
+  let description = 'No description provided.';
+  const fm = content.match(/^---\s*\n([\s\S]*?)\n---/);
+  if (fm) {
+    const nameMatch = fm[1].match(/^name:\s*(.+)$/m);
+    const descMatch = fm[1].match(/^description:\s*(.+)$/m);
+    if (nameMatch) name = nameMatch[1].trim().replace(/^["']|["']$/g, '');
+    if (descMatch) description = descMatch[1].trim().replace(/^["']|["']$/g, '');
+  } else {
+    const firstLine = content.split('\n').map(l => l.trim()).find(l => l && !l.startsWith('#'));
+    if (firstLine) description = firstLine.slice(0, 150);
+  }
+  return { name, description };
 }
-let kanbanStore: KanbanItem[] = [
-  { id: '1', title: 'Setup autonomous agents & tools', status: 'done' },
-  { id: '2', title: 'Connect live web search engine', status: 'done' },
-];
 
-interface ScheduledJob {
-  id: string;
-  prompt: string;
-  schedule: string;
-  created_at: string;
+async function walkMarkdownFiles(dir: string): Promise<string[]> {
+  let entries: any[] = [];
+  try {
+    entries = await fs.readdir(dir, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+  const files: string[] = [];
+  for (const entry of entries) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...(await walkMarkdownFiles(full)));
+    } else if (entry.name.toLowerCase().endsWith('.md') && !['README.MD', 'DESCRIPTION.MD', 'CONTRIBUTING.MD'].includes(entry.name.toUpperCase())) {
+      files.push(full);
+    }
+  }
+  return files;
 }
-let cronStore: ScheduledJob[] = [];
+
+async function listSkillsReal(): Promise<{ name: string; description: string; path: string }[]> {
+  const dir = skillsDir();
+  await fs.mkdir(dir, { recursive: true });
+  const files = await walkMarkdownFiles(dir);
+  const skills: { name: string; description: string; path: string }[] = [];
+  const seen = new Set<string>();
+  for (const file of files.sort()) {
+    let content = '';
+    try {
+      content = await fs.readFile(file, 'utf-8');
+    } catch {
+      continue;
+    }
+    const fallbackName = path.basename(file).toLowerCase() === 'skill.md' ? path.basename(path.dirname(file)) : path.basename(file, '.md');
+    const { name, description } = parseSkillFrontmatter(content, fallbackName);
+    if (seen.has(name)) continue;
+    seen.add(name);
+    skills.push({ name, description, path: path.relative(dir, file) });
+  }
+  return skills;
+}
+
+async function viewSkillReal(skillName: string): Promise<any> {
+  const dir = skillsDir();
+  const clean = skillName.replace(/\.md$/i, '').trim().toLowerCase();
+  const files = await walkMarkdownFiles(dir);
+  for (const file of files) {
+    const rel = path.relative(dir, file).toLowerCase();
+    const stem = path.basename(file, '.md').toLowerCase();
+    const parentName = path.basename(path.dirname(file)).toLowerCase();
+    if ([stem, parentName, rel, rel.replace(/\.md$/, '')].includes(clean)) {
+      const content = await fs.readFile(file, 'utf-8');
+      return { success: true, name: skillName, path: path.relative(dir, file), content };
+    }
+  }
+  return { success: false, error: `Skill '${skillName}' not found.` };
+}
+
+async function manageSkillReal(args: Record<string, any>): Promise<any> {
+  const dir = skillsDir();
+  await fs.mkdir(dir, { recursive: true });
+  const action = args.action;
+  const slug = String(args.name || '').trim().toLowerCase().replace(/[^\w-]+/g, '_');
+  if (!slug) return { success: false, error: 'A skill name is required.' };
+  const filePath = path.join(dir, `${slug}.md`);
+
+  if (action === 'delete' || action === 'disable') {
+    try {
+      if (action === 'delete') {
+        await fs.unlink(filePath);
+      } else {
+        const content = await fs.readFile(filePath, 'utf-8').catch(() => '');
+        await fs.writeFile(filePath + '.disabled', content);
+        await fs.unlink(filePath).catch(() => {});
+      }
+      return { success: true, name: slug, action, message: `Skill '${slug}' ${action}d.` };
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  }
+
+  // create or edit
+  const formatted = `---\nname: ${args.name}\ndescription: ${args.description || 'No description provided.'}\n---\n\n# ${args.name}\n\n${(args.instructions || '').trim()}\n`;
+  await fs.writeFile(filePath, formatted, 'utf-8');
+  return {
+    success: true,
+    name: slug,
+    path: `${slug}.md`,
+    message: `Skill '${slug}' ${action === 'edit' ? 'updated' : 'saved'} successfully.`,
+  };
+}
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 // COMPLETE AGENT TOOLS SCHEMA (Mimir + Agentic Architecture + Doc Editing + Diagrams)
@@ -283,7 +377,7 @@ export const AGENT_TOOLS_SCHEMA = [
     type: 'function',
     function: {
       name: 'browser_exec',
-      description: 'Run autonomous browser workflows — navigate, interact, extract results in sequence.',
+      description: 'Run a sequence of interactions (click, type, press, select) on the current browser page. Call browser_navigate first to load the page.',
       parameters: {
         type: 'object',
         properties: {
@@ -293,12 +387,11 @@ export const AGENT_TOOLS_SCHEMA = [
             items: {
               type: 'object',
               properties: {
-                action: { type: 'string', enum: ['navigate', 'click', 'type', 'press', 'scroll', 'screenshot', 'wait'] },
-                selector: { type: 'string' },
-                value: { type: 'string' },
-                url: { type: 'string' },
+                action: { type: 'string', enum: ['click', 'type', 'press', 'select'] },
+                selector: { type: 'string', description: 'CSS selector the step acts on.' },
+                value: { type: 'string', description: 'Text to type, key to press, or option to select.' },
               },
-              required: ['action'],
+              required: ['action', 'selector'],
             },
           },
         },
@@ -561,10 +654,10 @@ export const AGENT_TOOLS_SCHEMA = [
       parameters: {
         type: 'object',
         properties: {
-          action: { type: 'string', enum: ['list', 'create', 'update'] },
+          action: { type: 'string', enum: ['list', 'create', 'update', 'delete'] },
           title: { type: 'string', description: 'Title of the task.' },
           status: { type: 'string', enum: ['backlog', 'todo', 'in_progress', 'done'] },
-          id: { type: 'string', description: 'Task ID for update.' },
+          id: { type: 'string', description: 'Task ID for update or delete.' },
         },
         required: ['action'],
       },
@@ -1299,10 +1392,43 @@ async function proxyToBackend(endpoint: string, payload: Record<string, any>): P
   return null;
 }
 
+// Auth-required backend calls (memory/kanban/cron/session search). Unlike
+// proxyToBackend above, failures are surfaced as a real error rather than
+// silently returning null for a fallback — these have no honest fake
+// fallback to fall back to.
+async function proxyToBackendAuthed(
+  endpoint: string,
+  payload: Record<string, any> | null,
+  opts: { method?: 'GET' | 'POST' | 'DELETE'; authToken?: string }
+): Promise<any> {
+  if (!opts.authToken) {
+    return { success: false, error: 'You need to be logged in to use this feature.' };
+  }
+  try {
+    const method = opts.method || 'POST';
+    const headers: Record<string, string> = { Authorization: `Bearer ${opts.authToken}` };
+    if (payload) headers['Content-Type'] = 'application/json';
+    const res = await fetch(`http://localhost:8000${endpoint}`, {
+      method,
+      headers,
+      body: payload ? JSON.stringify(payload) : undefined,
+      signal: AbortSignal.timeout(15000),
+    });
+    const body = await res.json().catch(() => null);
+    if (res.ok) return body;
+    if (res.status === 401) {
+      return { success: false, error: 'Your session expired — please log in again.' };
+    }
+    return { success: false, error: body?.detail || `Backend returned ${res.status}` };
+  } catch (err: any) {
+    return { success: false, error: `Could not reach the backend: ${err.message || 'network error'}` };
+  }
+}
+
 /**
  * Central tool dispatcher
  */
-export async function executeTool(name: string, args: Record<string, any>): Promise<any> {
+export async function executeTool(name: string, args: Record<string, any>, authToken?: string): Promise<any> {
   try {
     switch (name) {
       // ── 1. Web & Search ──────────────────────────────────────────────────────
@@ -1315,12 +1441,25 @@ export async function executeTool(name: string, args: Record<string, any>): Prom
       case 'x_search':
         return await performWebSearch(`site:x.com OR site:twitter.com ${args.query || ''}`);
 
-      case 'open_url':
-        return {
-          success: true,
-          url: args.url,
-          summary: `Instructed user to open URL: ${args.url}`,
-        };
+      case 'open_url': {
+        // The tool has no channel to actually navigate the user's browser —
+        // the honest, useful thing it can do is confirm the link resolves
+        // before the model hands it to the user as a clickable markdown link.
+        let url = String(args.url || '').trim();
+        if (!url.startsWith('http://') && !url.startsWith('https://')) url = 'https://' + url;
+        try {
+          const res = await fetch(url, { method: 'HEAD', redirect: 'follow', signal: AbortSignal.timeout(8000) });
+          return {
+            success: res.ok,
+            url,
+            summary: res.ok
+              ? `Link confirmed reachable (HTTP ${res.status}). Present it to the user as a clickable link — this tool cannot open it in their browser directly.`
+              : `Link returned HTTP ${res.status} — it may be broken or require a browser to load.`,
+          };
+        } catch (err: any) {
+          return { success: false, url, error: `Could not reach this URL: ${err.message || 'network error'}` };
+        }
+      }
 
       // ── 2. Web Browser Automation ────────────────────────────────────────────
       case 'browser_navigate': {
@@ -1476,91 +1615,108 @@ export async function executeTool(name: string, args: Record<string, any>): Prom
 
       // ── 5. Planning, Memory & Productivity ──────────────────────────────────
       case 'todo': {
+        // A todo IS a real, persisted Kanban task (the board already models
+        // 'todo'/'done' as statuses) — no separate fake store needed. 'clear'
+        // is intentionally not supported since todos and Kanban tasks share
+        // the same board; a blanket wipe here would delete Kanban work too.
         const act = args.action;
+        const toTodoShape = (t: any) => ({ id: t.id, text: t.title, done: t.status === 'done' });
+
         if ((act === 'add' || act === 'create') && args.item) {
-          const newItem: TodoItem = { id: Date.now(), text: args.item, done: false };
-          todoStore.push(newItem);
-          return { success: true, item: newItem, todos: todoStore, summary: `Added task: "${args.item}"` };
+          const res = await proxyToBackendAuthed('/api/tools/kanban', { action: 'create', title: args.item, status: 'todo' }, { authToken });
+          if (res?.success === false) return res;
+          return { success: true, item: { id: res.task_id, text: args.item, done: false }, summary: `Added task: "${args.item}"` };
         }
         if (act === 'list') {
-          return { success: true, todos: todoStore, summary: `Listing ${todoStore.length} tasks` };
+          const res = await proxyToBackendAuthed('/api/tools/kanban', null, { method: 'GET', authToken });
+          if (res?.success === false) return res;
+          const todos = (res?.tasks || []).filter((t: any) => t.status === 'todo' || t.status === 'done').map(toTodoShape);
+          return { success: true, todos };
         }
-        if (act === 'toggle' && args.id) {
-          todoStore = todoStore.map(t => (t.id === args.id ? { ...t, done: !t.done } : t));
-          return { success: true, todos: todoStore, summary: `Toggled task #${args.id}` };
+        if ((act === 'toggle' || act === 'complete') && args.id) {
+          const listRes = await proxyToBackendAuthed('/api/tools/kanban', null, { method: 'GET', authToken });
+          const task = (listRes?.tasks || []).find((t: any) => String(t.id) === String(args.id));
+          if (!task) return { success: false, error: `Task #${args.id} not found.` };
+          const newStatus = act === 'complete' ? 'done' : task.status === 'done' ? 'todo' : 'done';
+          const res = await proxyToBackendAuthed('/api/tools/kanban', { action: 'update', task_id: Number(args.id), status: newStatus }, { authToken });
+          if (res?.success === false) return res;
+          return { success: true, summary: `Marked task #${args.id} as ${newStatus}` };
         }
-        if (act === 'complete' && (args.id || args.index !== undefined)) {
-          const targetId = args.id ?? (todoStore[args.index]?.id);
-          todoStore = todoStore.map(t => (t.id === targetId ? { ...t, done: true } : t));
-          return { success: true, todos: todoStore, summary: `Completed task #${targetId}` };
-        }
-        if ((act === 'remove' || act === 'delete') && (args.id || args.index !== undefined)) {
-          const targetId = args.id ?? (todoStore[args.index]?.id);
-          todoStore = todoStore.filter(t => t.id !== targetId);
-          return { success: true, todos: todoStore, summary: `Removed task` };
+        if ((act === 'remove' || act === 'delete') && args.id) {
+          const res = await proxyToBackendAuthed('/api/tools/kanban', { action: 'delete', task_id: Number(args.id) }, { authToken });
+          return res;
         }
         if (act === 'clear') {
-          todoStore = [];
-          return { success: true, todos: [], summary: 'Cleared all todo items.' };
+          return { success: false, error: "Clearing all todos isn't supported — todos live on the shared Kanban board, so a bulk clear would also delete Kanban tasks. Remove items individually instead." };
         }
-        return { success: true, todos: todoStore, summary: 'TODO action complete' };
+        return { success: false, error: `Unknown todo action "${act}".` };
       }
 
       case 'memory': {
         const act = args.action;
-        if ((act === 'set' || act === 'store') && args.key && args.value) {
-          memoryStore[args.key] = args.value;
-          return { success: true, key: args.key, value: args.value, summary: `Stored memory: ${args.key}` };
+        if ((act === 'set' || act === 'store') && (args.value || args.key)) {
+          const content = args.value ? (args.key ? `${args.key}: ${args.value}` : args.value) : args.key;
+          const res = await proxyToBackendAuthed('/api/memories', { content }, { authToken });
+          return res?.success === false ? res : { success: true, content, summary: `Remembered: "${content}"` };
         }
-        if ((act === 'get' || act === 'recall') && args.key) {
-          return { success: true, key: args.key, value: memoryStore[args.key] || null };
-        }
-        if (act === 'list') {
-          return { success: true, memory: memoryStore };
+        if (act === 'list' || act === 'get' || act === 'recall') {
+          const res = await proxyToBackendAuthed('/api/memories', null, { method: 'GET', authToken });
+          if (res?.success === false) return res;
+          const memories: any[] = Array.isArray(res) ? res : [];
+          if ((act === 'get' || act === 'recall') && args.key) {
+            const match = memories.find(m => (m.content || '').toLowerCase().includes(String(args.key).toLowerCase()));
+            return { success: true, key: args.key, value: match?.content || null };
+          }
+          return { success: true, memory: memories };
         }
         if (act === 'delete' && args.key) {
-          delete memoryStore[args.key];
-          return { success: true, summary: `Deleted memory: ${args.key}` };
+          const listRes = await proxyToBackendAuthed('/api/memories', null, { method: 'GET', authToken });
+          const memories: any[] = Array.isArray(listRes) ? listRes : [];
+          const match = memories.find(m => (m.content || '').toLowerCase().includes(String(args.key).toLowerCase()));
+          if (!match) return { success: false, error: `No memory matching "${args.key}" found.` };
+          const res = await proxyToBackendAuthed(`/api/memories/${match.id}`, null, { method: 'DELETE', authToken });
+          return res?.success === false ? res : { success: true, summary: `Deleted memory: "${match.content}"` };
         }
-        return { success: true, memory: memoryStore };
+        return { success: false, error: `Unknown memory action "${act}".` };
       }
 
       case 'session_search':
       case 'search_past_chats': {
-        const q = (args.query || '').toLowerCase();
-        const proxied = await proxyToBackend('/api/conversations/search', { query: q, limit: args.limit || 5 });
-        if (proxied) return proxied;
-        return {
-          success: true,
-          query: args.query,
-          results: [
-            { title: 'Recent Conversation', snippet: `Context matching "${args.query}" retrieved from active session.` },
-          ],
-          summary: `Searched session history for "${args.query}"`,
-        };
+        const q = encodeURIComponent(args.query || '');
+        const limit = args.limit || 5;
+        const res = await proxyToBackendAuthed(`/api/chat/search?q=${q}&limit=${limit}`, null, {
+          method: 'GET',
+          authToken,
+        });
+        if (res?.success === false) return res;
+        return { success: true, query: args.query, results: res?.results || [] };
       }
 
       case 'cronjob':
       case 'schedule_task': {
         const act = args.action || 'create';
         if (act === 'create' && args.prompt) {
-          const newJob: ScheduledJob = {
-            id: `job-${Date.now()}`,
-            prompt: args.prompt,
-            schedule: args.schedule || 'in 10 minutes',
-            created_at: new Date().toISOString(),
-          };
-          cronStore.push(newJob);
-          return { success: true, job: newJob, summary: `Scheduled task "${args.prompt}" for ${newJob.schedule}` };
+          const res = await proxyToBackendAuthed(
+            '/api/tools/scheduled',
+            { action: 'create', prompt: args.prompt, schedule: args.schedule || '10 minutes' },
+            { authToken }
+          );
+          return res;
         }
         if (act === 'list') {
-          return { success: true, jobs: cronStore, summary: `Listing ${cronStore.length} scheduled jobs` };
+          const res = await proxyToBackendAuthed('/api/tools/scheduled', null, { method: 'GET', authToken });
+          if (res?.success === false) return res;
+          return { success: true, jobs: res?.jobs || [] };
         }
-        if (act === 'delete' && args.job_id) {
-          cronStore = cronStore.filter(j => j.id !== args.job_id);
-          return { success: true, summary: `Deleted scheduled job ${args.job_id}` };
+        if ((act === 'delete' || act === 'cancel') && args.job_id) {
+          const res = await proxyToBackendAuthed(
+            '/api/tools/scheduled',
+            { action: 'delete', job_id: Number(args.job_id) },
+            { authToken }
+          );
+          return res;
         }
-        return { success: true, jobs: cronStore };
+        return { success: false, error: `Unknown scheduled task action "${act}".` };
       }
 
       case 'clarify':
@@ -1580,24 +1736,32 @@ export async function executeTool(name: string, args: Record<string, any>): Prom
       case 'update_kanban_task':
       case 'list_kanban_tasks': {
         if (name === 'create_kanban_task' || args.action === 'create') {
-          const title = args.title || 'Untitled task';
-          const task: KanbanItem = {
-            id: String(Date.now()),
-            title,
-            description: args.description,
-            status: args.status || 'todo',
-          };
-          kanbanStore.push(task);
-          return { success: true, task, summary: `Created Kanban task: "${title}"` };
+          const res = await proxyToBackendAuthed(
+            '/api/tools/kanban',
+            { action: 'create', title: args.title || 'Untitled task', description: args.description, status: args.status },
+            { authToken }
+          );
+          return res;
         }
         if (name === 'update_kanban_task' || args.action === 'update') {
-          const targetId = String(args.task_id || args.id);
-          kanbanStore = kanbanStore.map(t =>
-            t.id === targetId ? { ...t, status: args.status || t.status, title: args.title || t.title } : t
+          const res = await proxyToBackendAuthed(
+            '/api/tools/kanban',
+            { action: 'update', task_id: Number(args.task_id || args.id), status: args.status, title: args.title, description: args.description },
+            { authToken }
           );
-          return { success: true, tasks: kanbanStore, summary: `Updated Kanban task #${targetId}` };
+          return res;
         }
-        return { success: true, tasks: kanbanStore, summary: `Listing ${kanbanStore.length} Kanban tasks` };
+        if (args.action === 'delete') {
+          const res = await proxyToBackendAuthed(
+            '/api/tools/kanban',
+            { action: 'delete', task_id: Number(args.task_id || args.id) },
+            { authToken }
+          );
+          return res;
+        }
+        const res = await proxyToBackendAuthed('/api/tools/kanban', null, { method: 'GET', authToken });
+        if (res?.success === false) return res;
+        return { success: true, tasks: res?.tasks || [] };
       }
 
       // ── 7. Code Execution & Subagents ────────────────────────────────────────
@@ -1625,46 +1789,29 @@ export async function executeTool(name: string, args: Record<string, any>): Prom
       }
 
       case 'delegate_task': {
+        // No background worker exists that can independently run a full
+        // tool-enabled agent loop — claiming delegation succeeded here would
+        // be a promise this app can't keep. Do the task inline instead.
         return {
-          success: true,
-          task: args.task,
-          context: args.context,
-          summary: `Subagent delegated task: "${args.task}". Execution initiated.`,
+          success: false,
+          error: 'Subagent delegation is not available — there is no background worker to run a task independently. Do this task yourself, in this conversation, using the tools you have.',
         };
       }
 
       // ── 8. Skills Management ────────────────────────────────────────────────
       case 'skills_list':
       case 'list_skills': {
-        return {
-          success: true,
-          skills: [
-            { name: 'web_research', description: 'Search DuckDuckGo/Google and synthesize live articles.' },
-            { name: 'code_interpreter', description: 'Run Python code, verify mathematics, and inspect data.' },
-            { name: 'document_editor', description: 'Multi-step surgical document editing (ProseMirror model).' },
-            { name: 'diagram_generator', description: 'Generate Mermaid.js diagrams for architecture and flowcharts.' },
-            { name: 'file_manager', description: 'Read, write, search, and patch workspace files.' },
-            { name: 'system_terminal', description: 'Execute bash shell commands and inspect services.' },
-            { name: 'kanban_manager', description: 'Plan, track, and complete multi-step engineering tasks.' },
-          ],
-        };
+        const skills = await listSkillsReal();
+        return { success: true, skills };
       }
 
-      case 'skill_view': {
-        return {
-          success: true,
-          skill_name: args.skill_name,
-          instructions: `Standard skill execution template for ${args.skill_name}. Follow act-observe-act pattern.`,
-        };
-      }
-
-      case 'skill_manage':
+      case 'skill_view':
       case 'use_skill': {
-        return {
-          success: true,
-          skill: args.skill_name || args.name,
-          summary: `Skill ${args.skill_name || args.name} ready for execution.`,
-        };
+        return await viewSkillReal(args.skill_name);
+      }
+
+      case 'skill_manage': {
+        return await manageSkillReal(args);
       }
 
       // ── 9. Vision, Media & Text-to-Speech ───────────────────────────────────
@@ -1836,7 +1983,7 @@ export async function executeTool(name: string, args: Record<string, any>): Prom
       }
 
       case 'edit_word_document': {
-        const targetPath = path.resolve(process.cwd(), args.path);
+        const targetPath = resolveDocPath(args.path);
         const result = await runDocEngine({
           action: 'edit_word',
           path: targetPath,
@@ -1869,7 +2016,7 @@ export async function executeTool(name: string, args: Record<string, any>): Prom
       }
 
       case 'read_word_document': {
-        const targetPath = path.resolve(process.cwd(), args.path);
+        const targetPath = resolveDocPath(args.path);
         const result = await runDocEngine({
           action: 'read_word',
           path: targetPath,
@@ -1915,7 +2062,7 @@ export async function executeTool(name: string, args: Record<string, any>): Prom
       }
 
       case 'read_pdf_document': {
-        const targetPath = path.resolve(process.cwd(), args.path);
+        const targetPath = resolveDocPath(args.path);
         const result = await runDocEngine({
           action: 'read_pdf',
           path: targetPath,
@@ -1967,7 +2114,7 @@ export async function executeTool(name: string, args: Record<string, any>): Prom
       }
 
       case 'edit_spreadsheet': {
-        const targetPath = path.resolve(process.cwd(), args.path);
+        const targetPath = resolveDocPath(args.path);
         const result = await runDocEngine({
           action: 'edit_spreadsheet',
           path: targetPath,
@@ -1997,7 +2144,7 @@ export async function executeTool(name: string, args: Record<string, any>): Prom
       }
 
       case 'read_spreadsheet': {
-        const targetPath = path.resolve(process.cwd(), args.path);
+        const targetPath = resolveDocPath(args.path);
         const result = await runDocEngine({
           action: 'read_spreadsheet',
           path: targetPath,
@@ -2049,7 +2196,7 @@ export async function executeTool(name: string, args: Record<string, any>): Prom
 
       // ── Document Export & Conversion ───────────────────────────────────────
       case 'export_document': {
-        const src = path.resolve(process.cwd(), args.source_path);
+        const src = resolveDocPath(args.source_path);
         const targetFormat = (args.target_format || 'pdf').toLowerCase().replace(/^\./, '');
         const outPath = args.output_path
           ? path.resolve(process.cwd(), args.output_path)

@@ -4,6 +4,13 @@ export interface Message {
   content: string;
   timestamp: string;
   isStreaming?: boolean;
+  images?: string[]; // base64 data URLs of attached photos
+}
+
+export interface Source {
+  id: number;
+  filename: string;
+  chunkCount: number;
 }
 
 export interface Conversation {
@@ -13,6 +20,7 @@ export interface Conversation {
   model: string;
   createdAt: string;
   updatedAt: string;
+  sources?: Source[];
 }
 
 export interface ConversationGroup {

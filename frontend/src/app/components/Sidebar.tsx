@@ -8,21 +8,20 @@ import {
   Folder,
   CalendarClock,
   LayoutGrid,
-  Mic,
   Sun,
   Moon,
-  ChevronDown,
   Trash2,
   Pencil,
   Check,
   X,
   PanelLeftClose,
-  Download,
   Search,
   Settings,
+  LogOut,
 } from 'lucide-react';
 import { Conversation, ConversationGroup } from '../types/chat';
 import AppLogo from '@/components/ui/AppLogo';
+import { useAuth } from '@/context/AuthContext';
 
 interface SidebarProps {
   open: boolean;
@@ -37,7 +36,6 @@ interface SidebarProps {
   theme: 'dark' | 'light';
   onToggleTheme: () => void;
   onOpenArtifacts?: () => void;
-  onOpenVoice?: () => void;
   onOpenTools?: () => void;
   onOpenSearch?: () => void;
 }
@@ -54,11 +52,11 @@ export default function Sidebar({
   theme,
   onToggleTheme,
   onOpenArtifacts,
-  onOpenVoice,
   onOpenTools,
   onOpenSearch,
 }: SidebarProps) {
   const router = useRouter();
+  const { user, logout } = useAuth();
   const [hoverConvId, setHoverConvId] = useState<string | null>(null);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
@@ -180,13 +178,6 @@ export default function Sidebar({
               <LayoutGrid size={17} strokeWidth={1.8} className="flex-shrink-0 text-muted-foreground group-hover:text-foreground transition-colors" />
               <span className="flex-1 text-left">Artifacts Panel</span>
             </button>
-            <button
-              onClick={onOpenVoice}
-              className="flex items-center gap-2.5 w-full px-3 py-2 rounded-lg text-sm text-muted-foreground hover:text-foreground hover:bg-sidebar-hover transition-all duration-150 group"
-            >
-              <Mic size={17} strokeWidth={1.8} className="flex-shrink-0 text-muted-foreground group-hover:text-foreground transition-colors" />
-              <span className="flex-1 text-left">Voice Assistant</span>
-            </button>
           </div>
 
           <div className="mx-3 border-t border-sidebar-border mb-3 flex-shrink-0" />
@@ -254,23 +245,18 @@ export default function Sidebar({
             <div className="flex items-center justify-between px-3 py-2.5">
               <div className="flex items-center gap-2 min-w-0">
                 <div className="w-7 h-7 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0 ring-1 ring-primary/20">
-                  <span className="text-xs font-bold text-primary">V</span>
+                  <span className="text-xs font-bold text-primary">
+                    {(user?.name || user?.email || '?').charAt(0).toUpperCase()}
+                  </span>
                 </div>
                 <div className="min-w-0">
-                  <p className="text-sm font-medium text-foreground truncate leading-tight">pookieee</p>
-                  <div className="flex items-center gap-0.5">
-                    <span className="text-[0.6875rem] text-muted-foreground/60">Free plan</span>
-                    <ChevronDown size={9} className="text-muted-foreground/50" />
-                  </div>
+                  <p className="text-sm font-medium text-foreground truncate leading-tight">
+                    {user?.name || user?.email?.split('@')[0] || 'Account'}
+                  </p>
+                  <p className="text-[0.6875rem] text-muted-foreground/60 truncate">{user?.email}</p>
                 </div>
               </div>
               <div className="flex items-center gap-0.5">
-                <button
-                  className="p-1.5 rounded-lg text-muted-foreground/60 hover:text-foreground hover:bg-sidebar-hover transition-colors duration-150"
-                  aria-label="Download"
-                >
-                  <Download size={13} />
-                </button>
                 <button
                   onClick={onToggleTheme}
                   className="p-1.5 rounded-lg text-muted-foreground/60 hover:text-foreground hover:bg-sidebar-hover transition-colors duration-150"
@@ -284,6 +270,14 @@ export default function Sidebar({
                   aria-label="Settings"
                 >
                   <Settings size={13} />
+                </button>
+                <button
+                  onClick={logout}
+                  className="p-1.5 rounded-lg text-muted-foreground/60 hover:text-foreground hover:bg-sidebar-hover transition-colors duration-150"
+                  aria-label="Log out"
+                  title="Log out"
+                >
+                  <LogOut size={13} />
                 </button>
               </div>
             </div>

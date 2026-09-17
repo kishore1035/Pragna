@@ -4,6 +4,11 @@ import { imageHosts } from './image-hosts.config.mjs';
 const nextConfig = {
   productionBrowserSourceMaps: true,
   distDir: process.env.DIST_DIR || '.next',
+  // The dev-mode indicator's hit-region sits over this app's own top-right
+  // header controls (Share, etc.) and silently swallows clicks meant for
+  // them — repositioning the visible badge alone didn't move the hit-region.
+  // Disable it entirely rather than lose clicks on real UI in dev mode.
+  devIndicators: false,
   typescript: {
     ignoreBuildErrors: true,
   },

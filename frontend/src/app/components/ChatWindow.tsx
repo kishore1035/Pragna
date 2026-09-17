@@ -1,8 +1,11 @@
 'use client';
 
 import React, { useRef, useEffect, useState, useCallback } from 'react';
-import { PanelLeftOpen, Share2, ChevronDown, ArrowDown, Mic, Code2, LayoutGrid, Wrench, Search } from 'lucide-react';
-import { Conversation, ModelOption } from '../types/chat';
+import { PanelLeftOpen, Share2, ChevronDown, ArrowDown, Code2, LayoutGrid, Wrench, Search, FileText, X } from 'lucide-react';
+import { toast } from 'sonner';
+import { Conversation, ModelOption, Source } from '../types/chat';
+import { uploadDocument } from '@/lib/api';
+import { filesToDataUrls } from '../utils/chatUtils';
 import MessageList from './MessageList';
 import ChatInput from './ChatInput';
 import PromptInput from '@/components/ui/ai-chat-input';
@@ -15,7 +18,7 @@ interface ChatWindowProps {
   selectedModel: ModelOption;
   models: ModelOption[];
   onSelectModel: (model: ModelOption) => void;
-  onSendMessage: (content: string) => void;
+  onSendMessage: (content: string, images?: string[]) => void;
   onStopStreaming: () => void;
   onNewConversation: () => void;
   onToggleSidebar: () => void;
@@ -24,8 +27,10 @@ interface ChatWindowProps {
   onToggleArtifact?: () => void;
   isArtifactOpen?: boolean;
   onOpenCommandPalette?: () => void;
-  onOpenVoiceAssistant?: () => void;
   onOpenTools?: () => void;
+  sources?: Source[];
+  onAttachSource?: (source: Source) => void;
+  onRemoveSource?: (sourceId: number) => void;
 }
 
 export default function ChatWindow({
@@ -43,12 +48,43 @@ export default function ChatWindow({
   onToggleArtifact,
   isArtifactOpen,
   onOpenCommandPalette,
-  onOpenVoiceAssistant,
   onOpenTools,
+  sources = [],
+  onAttachSource,
+  onRemoveSource,
 }: ChatWindowProps) {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [showJumpToBottom, setShowJumpToBottom] = useState(false);
   const isAtBottomRef = useRef(true);
+
+  const handleShare = useCallback(async () => {
+    if (!conversation) return;
+    // Conversations live only in this browser's localStorage — there's no
+    // server-backed conversation URL to share, so a real "share link" isn't
+    // possible yet. Share the actual content instead of a link that would
+    // 404 for anyone else.
+    const summary = [
+      conversation.title,
+      '',
+      ...conversation.messages.map(m => `${m.role === 'user' ? 'You' : 'Pragna'}: ${m.content}`),
+    ].join('\n');
+
+    if (typeof navigator !== 'undefined' && navigator.share) {
+      try {
+        await navigator.share({ title: conversation.title, text: summary });
+        return;
+      } catch (e: any) {
+        if (e?.name === 'AbortError') return;
+      }
+    }
+
+    try {
+      await navigator.clipboard.writeText(summary);
+      toast.success('Conversation copied to clipboard');
+    } catch {
+      toast.error('Failed to copy conversation');
+    }
+  }, [conversation]);
 
   const scrollToBottom = useCallback((smooth = false) => {
     const el = scrollContainerRef.current;
@@ -122,17 +158,6 @@ export default function ChatWindow({
             </button>
           )}
 
-          {/* Voice Assistant */}
-          {onOpenVoiceAssistant && (
-            <button
-              onClick={onOpenVoiceAssistant}
-              className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted border border-border/60 transition-all"
-              title="Voice Assistant"
-            >
-              <Mic size={14} />
-            </button>
-          )}
-
           {/* Tools & Skills */}
           {onOpenTools && (
             <button
@@ -167,9 +192,12 @@ export default function ChatWindow({
           </div>
 
           {hasMessages && (
-            <button className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium
+            <button
+              onClick={handleShare}
+              className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium
               text-muted-foreground hover:text-foreground hover:bg-muted border border-border/60
-              transition-all duration-150 active:scale-95">
+              transition-all duration-150 active:scale-95"
+            >
               <Share2 size={12} />
               Share
             </button>
@@ -220,13 +248,53 @@ export default function ChatWindow({
       {hasMessages && (
         <div className="flex-shrink-0 px-4 pb-4 pt-3 border-t border-border/30 bg-background/80 backdrop-blur-md">
           <div className="max-w-chat mx-auto flex flex-col items-center">
+            {/* Attached sources — added via the + inside the reply box below */}
+            {sources.length > 0 && (
+              <div className="w-full flex flex-wrap items-center gap-1.5 mb-2">
+                {sources.map(source => (
+                  <div
+                    key={source.id}
+                    className="flex items-center gap-1.5 pl-2 pr-1 py-1 rounded-lg bg-muted/60 border border-border/60 text-xs text-foreground"
+                  >
+                    <FileText size={12} className="text-muted-foreground shrink-0" />
+                    <span className="max-w-[160px] truncate">{source.filename}</span>
+                    <button
+                      onClick={() => onRemoveSource?.(source.id)}
+                      className="p-0.5 rounded hover:bg-muted-foreground/20 transition-colors"
+                      aria-label={`Remove ${source.filename}`}
+                    >
+                      <X size={11} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
             <PromptInput
-              onSubmit={(msg, meta) => {
+              onSubmit={async (msg, meta) => {
                 if (meta?.model && onSelectModel) {
                   const found = models.find(m => m.label === meta.model || m.id === meta.model);
                   if (found) onSelectModel(found);
                 }
-                onSendMessage(msg);
+
+                const allFiles = meta?.attachments || [];
+                const imageFiles = allFiles.filter(f => f.type.startsWith('image/'));
+                const docFiles = allFiles.filter(f => !f.type.startsWith('image/'));
+
+                if (docFiles.length > 0) {
+                  for (const file of docFiles) {
+                    try {
+                      const doc = await uploadDocument(file);
+                      onAttachSource?.({ id: doc.id, filename: doc.filename, chunkCount: doc.chunk_count });
+                      toast.success(`Added "${doc.filename}" as a source.`);
+                    } catch (err) {
+                      toast.error(err instanceof Error ? err.message : `Failed to attach "${file.name}"`);
+                    }
+                  }
+                }
+
+                const images = imageFiles.length > 0 ? await filesToDataUrls(imageFiles) : undefined;
+                const finalMsg = msg.trim() || (docFiles.length > 0 ? `Take a look at ${docFiles.map(f => f.name).join(', ')}.` : msg);
+                onSendMessage(finalMsg, images);
               }}
               placeholder="Reply to Pragna..."
               initialModel={selectedModel?.label || "Tvarā"}

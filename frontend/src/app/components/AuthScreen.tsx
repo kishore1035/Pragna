@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { toast } from 'sonner';
+import { Sun, Moon } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { API_BASE } from '@/lib/api';
 import AppLogo from '@/components/ui/AppLogo';
@@ -12,6 +13,19 @@ const InteractiveNeuralVortex = dynamic(
   { ssr: false }
 );
 
+const THEME_KEY = 'claudechat_theme';
+
+function loadTheme(): 'dark' | 'light' {
+  if (typeof window === 'undefined') return 'dark';
+  try {
+    const saved = localStorage.getItem(THEME_KEY) as 'dark' | 'light' | null;
+    if (saved) return saved;
+    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  } catch {
+    return 'dark';
+  }
+}
+
 export default function AuthScreen() {
   const { login, register } = useAuth();
   const [mode, setMode] = useState<'login' | 'register'>('login');
@@ -19,6 +33,7 @@ export default function AuthScreen() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [theme, setTheme] = useState<'dark' | 'light'>('dark');
 
   useEffect(() => {
     const oauthError = sessionStorage.getItem('argus-oauth-error');
@@ -27,6 +42,21 @@ export default function AuthScreen() {
       sessionStorage.removeItem('argus-oauth-error');
     }
   }, []);
+
+  // This screen can mount before ChatInterface ever has, so it applies the
+  // stored theme itself rather than relying on that component's effect.
+  useEffect(() => {
+    const initial = loadTheme();
+    setTheme(initial);
+    document.documentElement.classList.toggle('dark', initial === 'dark');
+  }, []);
+
+  const toggleTheme = () => {
+    const next = theme === 'dark' ? 'light' : 'dark';
+    setTheme(next);
+    document.documentElement.classList.toggle('dark', next === 'dark');
+    localStorage.setItem(THEME_KEY, next);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -45,6 +75,15 @@ export default function AuthScreen() {
   return (
     <div className="relative flex items-center justify-center min-h-screen px-4 overflow-hidden bg-background">
       <InteractiveNeuralVortex />
+
+      <button
+        onClick={toggleTheme}
+        aria-label="Toggle theme"
+        title="Toggle theme"
+        className="fixed top-5 left-5 z-20 flex items-center justify-center w-9 h-9 rounded-full bg-white text-black dark:bg-black dark:text-white border border-black/10 dark:border-white/10 shadow-sm hover:opacity-80 transition-opacity"
+      >
+        {theme === 'dark' ? <Sun size={15} /> : <Moon size={15} />}
+      </button>
 
       <div className="relative z-10 w-full max-w-sm bg-card border border-border rounded-2xl p-6 shadow-premium-lg">
         <div className="flex items-center justify-center mb-5">
