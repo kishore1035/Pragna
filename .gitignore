@@ -1,4 +1,49 @@
-# Node modules
+# Ignore everything at root by default except backend, frontend, README, and .gitignore
+/*
+!/backend/
+!/frontend/
+!/README.md
+!/.gitignore
+
+# Documents and specifications
+*.docx
+*.pdf
+
+# Extra root files, scripts and legacy launchers
+argus*
+claudechat*
+mimir*
+docs/
+documents/
+.github/
+package.json
+docker-compose.yml
+render.yaml
+run.sh
+run_windows.bat
+DEPLOY.md
+LICENSE
+
+# Backend specifics
+backend/argus*
+backend/claudechat*
+backend/ai_news_summary.txt
+backend/.venv/
+backend/.pytest_cache/
+backend/__pycache__/
+backend/data/
+data/
+
+# Frontend specifics
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/build/
+frontend/public/generated_docs/
+frontend/isro_2026_mission_roadmap.md
+frontend/.vercel/
+
+# Node modules & locks
 node_modules/
 package-lock.json
 
@@ -8,46 +53,18 @@ package-lock.json
 .env.*.local
 *.env
 
-# Next.js build output
-.next/
-out/
-
-# Production build
-build/
-
-# Logs
+# OS and logs
+.DS_Store
+Thumbs.db
+*.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
-
-# OS-specific files
-.DS_Store
-Thumbs.db
-
-# Vercel deployment
-.vercel/
-
-# Optional: if using TypeScript
+.claude/
 *.tsbuildinfo
-
-# Optional: if using testing tools
 coverage/
 jest-test-results.json
-
-# Optional: if using IDEs
 .vscode/
 .idea/
-
-# Optional: if using TurboRepo or monorepo
 turbo/
-
-# Backend virtualenv & cache
-backend/.venv/
-backend/.pytest_cache/
-backend/__pycache__/
-backend/data/
-data/
-frontend/public/generated_docs/
-.claude/
-frontend/isro_2026_mission_roadmap.md
