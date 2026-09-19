@@ -182,3 +182,113 @@ def test_edit_pdf_unknown_action_raises(tmp_path):
     dg._build_pdf({"title": "Doc", "sections": []}, str(filepath))
     with pytest.raises(ValueError):
         dg.edit_pdf_document(str(filepath), "not_a_real_action")
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# Regression: interleaved paragraphs/bullets/table must render in the order
+# they appeared in the source text, and no content type may be silently
+# dropped. Previously each builder rendered "all paragraphs, then the
+# table, then all bullets" regardless of source order, and the xlsx and
+# pptx fallback paths only used ONE of bullets/paragraphs/table per section
+# (whichever was checked first), discarding the rest.
+# ─────────────────────────────────────────────────────────────────────────
+_INTERLEAVED_CONTENT = """# Quarterly Report
+
+## Overview
+Intro paragraph.
+
+- First bullet
+- Second bullet
+
+Closing paragraph.
+
+| Region | Growth |
+|--------|--------|
+| NA | 12% |
+
+- Bullet after the table
+"""
+
+# No table -- exercises the xlsx "Summary" fallback sheet specifically,
+# rather than the per-section-table sheet path.
+_INTERLEAVED_CONTENT_NO_TABLE = """# Quarterly Report
+
+## Overview
+Intro paragraph.
+
+- First bullet
+- Second bullet
+
+Closing paragraph.
+"""
+
+
+def test_parse_markdown_outline_preserves_source_order():
+    structure = dg._parse_markdown_outline(_INTERLEAVED_CONTENT, original_prompt="Report")
+    section = structure["sections"][0]
+    block_summary = [(b["type"], b.get("text") or b.get("rows")) for b in section["blocks"]]
+    assert block_summary == [
+        ("paragraph", "Intro paragraph."),
+        ("bullet", "First bullet"),
+        ("bullet", "Second bullet"),
+        ("paragraph", "Closing paragraph."),
+        ("table", [["Region", "Growth"], ["NA", "12%"]]),
+        ("bullet", "Bullet after the table"),
+    ]
+
+
+def test_build_docx_preserves_interleaved_order(tmp_path):
+    filepath = tmp_path / "report.docx"
+    structure = dg._parse_markdown_outline(_INTERLEAVED_CONTENT, original_prompt="Report")
+    dg._build_docx(structure, str(filepath))
+
+    from docx import Document
+    from docx.text.paragraph import Paragraph as DocxParagraph
+
+    doc = Document(str(filepath))
+    seen = []
+    for child in doc.element.body:
+        if child.tag.endswith("}p"):
+            text = DocxParagraph(child, doc).text.strip()
+            if text:
+                seen.append(("p", text))
+        elif child.tag.endswith("}tbl"):
+            seen.append(("table", None))
+
+    # Skip the title/subtitle/heading paragraphs added before section content.
+    content_start = next(i for i, (_, t) in enumerate(seen) if t == "Intro paragraph.")
+    assert seen[content_start:] == [
+        ("p", "Intro paragraph."),
+        ("p", "First bullet"),
+        ("p", "Second bullet"),
+        ("p", "Closing paragraph."),
+        ("table", None),
+        ("p", "Bullet after the table"),
+    ]
+
+
+def test_build_xlsx_summary_fallback_does_not_drop_paragraphs(tmp_path):
+    filepath = tmp_path / "report.xlsx"
+    structure = dg._parse_markdown_outline(_INTERLEAVED_CONTENT_NO_TABLE, original_prompt="Report")
+    dg._build_xlsx(structure, str(filepath))
+
+    from openpyxl import load_workbook
+
+    wb = load_workbook(str(filepath))
+    ws = wb["Summary"]
+    contents = [row[1] for row in ws.iter_rows(min_row=2, values_only=True)]
+    assert "Intro paragraph." in contents
+    assert "Closing paragraph." in contents
+    assert "First bullet" in contents
+
+
+def test_build_pptx_slide_includes_paragraphs_and_bullets(tmp_path):
+    filepath = tmp_path / "deck.pptx"
+    structure = dg._parse_markdown_outline(_INTERLEAVED_CONTENT, original_prompt="Report")
+    dg._build_pptx(structure, str(filepath))
+
+    result = dg.read_presentation(str(filepath))
+    slide = next(s for s in result["slides"] if s["title"] == "Overview")
+    assert "Intro paragraph." in slide["bullets"]
+    assert "First bullet" in slide["bullets"]
+    assert "Closing paragraph." in slide["bullets"]

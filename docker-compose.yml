@@ -28,16 +28,18 @@ services:
     volumes:
       - ./backend/data:/app/data
 
-  # Frontend Service (Next.js with Argus UI)
+  # Frontend Service (Next.js with Pragna UI)
   frontend:
     build:
-      context: ./chatbot-ui
+      context: ./frontend
       dockerfile: Dockerfile
       args:
         NEXT_PUBLIC_API_BASE: ${NEXT_PUBLIC_API_BASE:-http://localhost:8000}
-    container_name: argus-frontend
+    container_name: pragna-frontend
     restart: unless-stopped
     ports:
       - "4028:4028"
+    volumes:
+      - ./frontend/data:/app/data
     depends_on:
       - backend

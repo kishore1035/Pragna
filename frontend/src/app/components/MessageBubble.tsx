@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
-import { Copy, ThumbsUp, ThumbsDown, RotateCcw, Check, Download, FileText } from 'lucide-react';
+import { Copy, ThumbsUp, ThumbsDown, RotateCcw, Check, Download, FileText, ChevronDown } from 'lucide-react';
 import { Message } from '../types/chat';
 import MarkdownRenderer from './MarkdownRenderer';
 import AppLogo from '@/components/ui/AppLogo';
@@ -58,6 +58,7 @@ export default function MessageBubble({
 }: MessageBubbleProps) {
   const [copied, setCopied] = useState(false);
   const [thumbState, setThumbState] = useState<'up' | 'down' | null>(null);
+  const [openCitation, setOpenCitation] = useState<number | null>(null);
   const isThinking = message.role === 'assistant' && message.content === '' && message.isStreaming;
   const isErrorMessage = message.role === 'assistant' && (
     message.content.includes("Could not connect to the AI service") ||
@@ -210,6 +211,37 @@ export default function MessageBubble({
                               <Download size={13} />
                               <span>Download</span>
                             </a>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* RAG citations — passages this reply's [n] markers refer to */}
+                    {!message.isStreaming && message.citations && message.citations.length > 0 && (
+                      <div className="mt-3 flex flex-wrap items-start gap-1.5">
+                        {message.citations.map((citation) => (
+                          <div key={citation.index} className="flex flex-col">
+                            <button
+                              onClick={() =>
+                                setOpenCitation(prev => (prev === citation.index ? null : citation.index))
+                              }
+                              className="flex items-center gap-1.5 pl-2 pr-1.5 py-1 rounded-lg bg-muted/60 border border-border/60 text-xs text-foreground hover:border-border transition-colors"
+                            >
+                              <span className="font-mono-data text-[10px] text-muted-foreground/80">
+                                [{citation.index}]
+                              </span>
+                              <FileText size={12} className="text-muted-foreground shrink-0" />
+                              <span className="max-w-[160px] truncate">{citation.filename}</span>
+                              <ChevronDown
+                                size={11}
+                                className={`transition-transform ${openCitation === citation.index ? 'rotate-180' : ''}`}
+                              />
+                            </button>
+                            {openCitation === citation.index && (
+                              <div className="mt-1 max-w-[320px] p-2.5 rounded-lg bg-muted/40 border border-border/50 text-[11px] text-muted-foreground leading-snug">
+                                {citation.snippet}
+                              </div>
+                            )}
                           </div>
                         ))}
                       </div>

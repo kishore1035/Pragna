@@ -96,6 +96,13 @@ CREATE TABLE IF NOT EXISTS scheduled_jobs (
     conversation_id TEXT,
     created_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS shared_conversations (
+    token TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    content TEXT NOT NULL,
+    owner_user_id INTEGER REFERENCES users(id),
+    created_at TEXT NOT NULL
+);
 """
 
 

@@ -20,8 +20,13 @@ echo "Starting FastAPI Backend on http://localhost:8000..."
 (cd "$DIR/backend" && "$PYTHON" -m uvicorn app.main:app --reload --port 8000) &
 BACKEND_PID=$!
 
+if [ ! -d "$DIR/frontend/.next" ]; then
+    echo "Building Next.js UI..."
+    (cd "$DIR" && npm run build)
+fi
+
 echo "Starting Next.js UI on http://localhost:4028..."
-(cd "$DIR" && npm run dev) &
+(cd "$DIR" && npm run start) &
 FRONTEND_PID=$!
 
 cleanup() {

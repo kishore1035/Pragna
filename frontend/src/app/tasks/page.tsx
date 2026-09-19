@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import Sidebar from '@/components/Sidebar';
+import AppLayout from '@/components/AppLayout';
 import AuthGate from '@/app/components/AuthGate';
 import { API_BASE, getAuthToken } from '@/lib/api';
 import { Calendar, Clock, CheckCircle2, ListTodo, Plus, RefreshCw } from 'lucide-react';
@@ -65,52 +65,51 @@ export default function TasksPage() {
 
   return (
     <AuthGate>
-      <div className="flex h-screen w-screen overflow-hidden bg-background text-foreground">
-        <Sidebar />
-        <main className="flex-1 flex flex-col h-full overflow-hidden bg-background">
+      <AppLayout>
+        <div className="flex-1 flex flex-col h-full overflow-hidden bg-background">
           {/* Header */}
-          <header className="h-14 border-b border-border px-6 flex items-center justify-between bg-card">
-            <div className="flex items-center gap-3">
-              <Calendar className="text-primary" size={20} />
-              <h1 className="text-lg font-semibold">Scheduled Tasks & Kanban Board</h1>
+          <header className="h-14 border-b border-border px-4 sm:px-6 flex items-center justify-between gap-3 bg-card shrink-0">
+            <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+              <Calendar className="text-primary shrink-0" size={20} />
+              <h1 className="text-sm sm:text-lg font-semibold truncate">Scheduled Tasks & Kanban Board</h1>
             </div>
             <button
               onClick={fetchData}
-              className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm bg-muted hover:bg-muted/80 text-foreground transition-colors"
+              className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm bg-muted hover:bg-muted/80 text-foreground transition-colors shrink-0"
             >
               <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-              Refresh
+              <span className="hidden sm:inline">Refresh</span>
             </button>
           </header>
 
           {/* Navigation Tabs */}
-          <div className="px-6 pt-4 border-b border-border flex items-center gap-4 bg-card/50">
+          <div className="px-4 sm:px-6 pt-4 border-b border-border flex items-center gap-4 bg-card/50 overflow-x-auto scrollbar-thin shrink-0">
             <button
               onClick={() => setActiveTab('scheduled')}
-              className={`flex items-center gap-2 pb-3 text-sm font-medium border-b-2 transition-colors ${
+              className={`flex items-center gap-2 pb-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
                 activeTab === 'scheduled'
                   ? 'border-primary text-primary'
                   : 'border-transparent text-muted-foreground hover:text-foreground'
               }`}
             >
               <Clock size={16} />
-              Scheduled Background Jobs ({scheduledJobs.length})
+              Scheduled Jobs ({scheduledJobs.length})
             </button>
             <button
               onClick={() => setActiveTab('kanban')}
-              className={`flex items-center gap-2 pb-3 text-sm font-medium border-b-2 transition-colors ${
+              className={`flex items-center gap-2 pb-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
                 activeTab === 'kanban'
                   ? 'border-primary text-primary'
                   : 'border-transparent text-muted-foreground hover:text-foreground'
               }`}
             >
               <ListTodo size={16} />
-              Kanban Project Board ({kanbanTasks.length})
+              Kanban Board ({kanbanTasks.length})
             </button>
           </div>
 
           {/* Main Content View */}
-          <div className="flex-1 overflow-y-auto p-6 scrollbar-thin">
+          <div className="flex-1 overflow-y-auto p-4 sm:p-6 scrollbar-thin">
             {loading ? (
               <div className="flex items-center justify-center h-48 text-muted-foreground">
                 <RefreshCw className="animate-spin mr-2" size={20} />
@@ -205,8 +204,8 @@ export default function TasksPage() {
               </div>
             )}
           </div>
-        </main>
-      </div>
+        </div>
+      </AppLayout>
     </AuthGate>
   );
 }

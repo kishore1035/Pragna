@@ -129,11 +129,10 @@ const InteractiveNeuralVortex = () => {
     const uPointerPosition = gl.getUniformLocation(program, 'u_pointer_position');
     const uScrollProgress = gl.getUniformLocation(program, 'u_scroll_progress');
 
-    // Resize handler
+    // Resize handler - cap DPR at 1 to prevent huge framebuffer memory
     const resizeCanvas = () => {
-      const devicePixelRatio = Math.min(window.devicePixelRatio, 2);
-      canvasEl.width = window.innerWidth * devicePixelRatio;
-      canvasEl.height = window.innerHeight * devicePixelRatio;
+      canvasEl.width = window.innerWidth;
+      canvasEl.height = window.innerHeight;
       gl.viewport(0, 0, canvasEl.width, canvasEl.height);
       gl.uniform1f(uRatio, canvasEl.width / canvasEl.height);
     };
@@ -141,8 +140,13 @@ const InteractiveNeuralVortex = () => {
     resizeCanvas();
     window.addEventListener('resize', resizeCanvas);
 
-    // Animation loop
+    // Animation loop with visibility pausing
+    let isRunning = true;
     const render = () => {
+      if (!isRunning || document.hidden) {
+        animationRef.current = null;
+        return;
+      }
       const currentTime = performance.now();
 
       // Smooth pointer movement
@@ -162,6 +166,20 @@ const InteractiveNeuralVortex = () => {
 
     render();
 
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        if (animationRef.current) {
+          cancelAnimationFrame(animationRef.current);
+          animationRef.current = null;
+        }
+      } else {
+        if (!animationRef.current && isRunning) {
+          animationRef.current = requestAnimationFrame(render);
+        }
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
     // Event listeners
     const handleMouseMove = (e: PointerEvent) => {
       pointer.current.tX = e.clientX;
@@ -180,10 +198,13 @@ const InteractiveNeuralVortex = () => {
 
     // Cleanup
     return () => {
+      isRunning = false;
       window.removeEventListener('resize', resizeCanvas);
       window.removeEventListener('pointermove', handleMouseMove);
       window.removeEventListener('touchmove', handleTouchMove);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
       if (animationRef.current) cancelAnimationFrame(animationRef.current);
+      gl.deleteBuffer(vertexBuffer);
       gl.deleteProgram(program);
       gl.deleteShader(vertexShader);
       gl.deleteShader(fragmentShader);

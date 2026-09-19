@@ -17,10 +17,12 @@ export default function MermaidDiagram({ code, className = '' }: MermaidDiagramP
 
   useEffect(() => {
     let isMounted = true;
+    let timerId: NodeJS.Timeout;
 
     async function renderMermaid() {
       if (!code || !code.trim()) return;
 
+      const id = `mermaid-${Math.random().toString(36).substring(2, 9)}`;
       try {
         const mermaid = (await import('mermaid')).default;
         mermaid.initialize({
@@ -40,7 +42,6 @@ export default function MermaidDiagram({ code, className = '' }: MermaidDiagramP
           securityLevel: 'loose',
         });
 
-        const id = `mermaid-${Math.random().toString(36).substring(2, 9)}`;
         const { svg } = await mermaid.render(id, code.trim());
 
         if (isMounted) {
@@ -48,17 +49,20 @@ export default function MermaidDiagram({ code, className = '' }: MermaidDiagramP
           setError(null);
         }
       } catch (err: any) {
-        console.error('Mermaid render error:', err);
         if (isMounted) {
           setError(err.message || 'Failed to render Mermaid diagram');
         }
+      } finally {
+        const tempEl = document.getElementById(`d${id}`);
+        if (tempEl) tempEl.remove();
       }
     }
 
-    renderMermaid();
+    timerId = setTimeout(renderMermaid, 200);
 
     return () => {
       isMounted = false;
+      clearTimeout(timerId);
     };
   }, [code]);
 
