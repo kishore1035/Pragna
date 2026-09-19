@@ -9,6 +9,7 @@
 [![Python](https://img.shields.io/badge/Python-3.12-3776AB?style=flat&logo=python)](https://python.org)
 [![ChromaDB](https://img.shields.io/badge/ChromaDB-Vector_Storage-orange)](https://www.trychroma.com/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![Word Document](https://img.shields.io/badge/Word_Doc-System_Specification-blue?logo=microsoftword)](PRAGNA_SYSTEM_SPECIFICATION.docx)
 
 ---
 
@@ -17,6 +18,8 @@
 **Pragna** is a full-stack AI platform combining conversational intelligence with real-time artifact visualization, document generation, semantic search, browser exploration, voice synthesis, and dynamic task management.
 
 Built for velocity, reliability, and precision, Pragna pairs an ultra-responsive Next.js 15 frontend with a high-concurrency FastAPI engine, SQLite persistence, and ChromaDB vector search.
+
+📄 **Architecture Document**: The full specification is also compiled as a formatted Microsoft Word document: [PRAGNA_SYSTEM_SPECIFICATION.docx](PRAGNA_SYSTEM_SPECIFICATION.docx).
 
 ---
 
