@@ -1,4 +1,4 @@
-# Pragna 🧠⚡
+# Pragna
 
 > Intelligent, high-performance AI workspace and conversational operating environment.
 
@@ -13,17 +13,17 @@
 
 ---
 
-## 🌟 Overview
+## Overview
 
 **Pragna** is a full-stack AI platform combining conversational intelligence with real-time artifact visualization, document generation, semantic search, browser exploration, voice synthesis, and dynamic task management.
 
 Built for velocity, reliability, and precision, Pragna pairs an ultra-responsive Next.js 15 frontend with a high-concurrency FastAPI engine, SQLite persistence, and ChromaDB vector search.
 
-📄 **Architecture Document**: The full specification is also compiled as a formatted Microsoft Word document: [PRAGNA_SYSTEM_SPECIFICATION.docx](PRAGNA_SYSTEM_SPECIFICATION.docx).
+**Architecture Document**: The full specification is also compiled as a formatted Microsoft Word document: [PRAGNA_SYSTEM_SPECIFICATION.docx](PRAGNA_SYSTEM_SPECIFICATION.docx).
 
 ---
 
-## 📐 Wireframes & User Interface
+## Wireframes & User Interface
 
 ### 1. Main Workspace & Artifact Studio (Desktop)
 
@@ -97,7 +97,7 @@ Built for velocity, reliability, and precision, Pragna pairs an ultra-responsive
 
 ---
 
-## 🔄 System Workflows
+## System Workflows
 
 ### 1. End-to-End Chat & Streaming Workflow
 
@@ -169,7 +169,7 @@ flowchart LR
 
 ---
 
-## 🏗️ How It's Built
+## How It's Built
 
 Pragna is engineered as a decoupled, modern multi-service architecture prioritizing speed, developer ergonomics, and rock-solid reliability.
 
@@ -227,7 +227,7 @@ flowchart TD
 
 ---
 
-## 📂 Repository Structure
+## Repository Structure
 
 ```text
 pragna/
@@ -263,7 +263,7 @@ pragna/
 
 ---
 
-## 🚀 Getting Started
+## Getting Started
 
 ### Prerequisites
 - **Node.js**: v20.x or later
@@ -322,7 +322,7 @@ Open `http://localhost:4028` in your browser.
 
 ---
 
-## 🧪 Testing & Validation
+## Testing & Validation
 
 Run comprehensive verification across both tiers:
 
@@ -339,6 +339,6 @@ npm run build
 
 ---
 
-## 📜 License
+## License
 
 This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
