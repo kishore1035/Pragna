@@ -36,7 +36,7 @@
     --chart-4: #e9c46a;
     --chart-5: #f4a261;
     --radius: 0.75rem;
-    --font-sans: var(--font-geist-sans), 'Segoe UI', system-ui, sans-serif;
+    --font-sans: var(--font-geist-sans), 'Noto Sans Devanagari', 'Noto Sans Bengali', 'Noto Sans Telugu', 'Noto Sans Tamil', 'Noto Sans Kannada', 'Noto Sans Malayalam', 'Noto Sans Gujarati', 'Noto Sans Gurmukhi', 'Noto Sans Oriya', 'Noto Nastaliq Urdu', 'Segoe UI', system-ui, sans-serif;
     --font-mono: var(--font-geist-mono), 'Courier New', monospace;
     --sidebar-bg: #f0ece0;
     --sidebar-border: #ddd4bf;
@@ -97,7 +97,7 @@
     --chart-4: #e9c46a;
     --chart-5: #f4a261;
     --radius: 0.75rem;
-    --font-sans: var(--font-geist-sans), 'Segoe UI', system-ui, sans-serif;
+    --font-sans: var(--font-geist-sans), 'Noto Sans Devanagari', 'Noto Sans Bengali', 'Noto Sans Telugu', 'Noto Sans Tamil', 'Noto Sans Kannada', 'Noto Sans Malayalam', 'Noto Sans Gujarati', 'Noto Sans Gurmukhi', 'Noto Sans Oriya', 'Noto Nastaliq Urdu', 'Segoe UI', system-ui, sans-serif;
     --font-mono: var(--font-geist-mono), 'Courier New', monospace;
     --sidebar-bg: #000000;
     --sidebar-border: #1c1a16;

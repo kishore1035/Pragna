@@ -68,3 +68,6 @@ jest-test-results.json
 .vscode/
 .idea/
 turbo/
+# Generated audio
+*.mp3
+*.wav

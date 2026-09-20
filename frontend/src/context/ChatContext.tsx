@@ -194,8 +194,9 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       // Muting should silence whatever's playing right now, not just block
       // future auto-play -- otherwise a long response keeps reading itself
       // out loud until it finishes on its own, with no way to interrupt it.
-      if (next && typeof window !== 'undefined' && 'speechSynthesis' in window) {
-        window.speechSynthesis.cancel();
+      if (next && typeof window !== 'undefined') {
+        if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+        window.dispatchEvent(new CustomEvent('pragna:speech-stop'));
       }
       return next;
     });
@@ -261,8 +262,9 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   const loadConversation = useCallback(async (id: number) => {
     // Switching conversations shouldn't leave the previous one still
     // talking in the background -- stop any in-flight speech first.
-    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-      window.speechSynthesis.cancel();
+    if (typeof window !== 'undefined') {
+      if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+      window.dispatchEvent(new CustomEvent('pragna:speech-stop'));
     }
     const data = await fetchConversation(id);
     setActiveConversationId(id);
@@ -291,8 +293,9 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   }, [openArtifact]);
 
   const startNewChat = useCallback(() => {
-    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-      window.speechSynthesis.cancel();
+    if (typeof window !== 'undefined') {
+      if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+      window.dispatchEvent(new CustomEvent('pragna:speech-stop'));
     }
     setActiveConversationId(null);
     setAllMessages([]);

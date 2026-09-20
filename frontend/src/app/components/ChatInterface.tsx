@@ -65,6 +65,23 @@ export default function ChatInterface() {
   const [activeArtifact, setActiveArtifact] = useState<{ title: string; content: string; language?: string } | null>(null);
   const [cmdPaletteOpen, setCmdPaletteOpen] = useState(false);
   const [toolsPanelOpen, setToolsPanelOpen] = useState(false);
+  const [selectedLanguage, setSelectedLanguage] = useState<string>(() => {
+    if (typeof window === 'undefined') return 'en';
+    const initialized = localStorage.getItem('pragna_lang_initialized');
+    if (!initialized) {
+      localStorage.setItem('pragna_selected_language', 'en');
+      localStorage.setItem('pragna_lang_initialized', 'true');
+      return 'en';
+    }
+    return localStorage.getItem('pragna_selected_language') || 'en';
+  });
+
+  const handleSelectLanguage = useCallback((langCode: string) => {
+    setSelectedLanguage(langCode);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('pragna_selected_language', langCode);
+    }
+  }, []);
 
   const handleOpenArtifact = useCallback((title: string, content: string, language?: string) => {
     setActiveArtifact({ title, content, language });
@@ -82,6 +99,17 @@ export default function ChatInterface() {
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, []);
+
+  // Synchronize authenticated user identity with localStorage
+  useEffect(() => {
+    if (user?.name) {
+      localStorage.setItem('claudechat_user_name', user.name);
+    } else if (user?.email) {
+      const emailName = user.email.split('@')[0];
+      const formatted = emailName.charAt(0).toUpperCase() + emailName.slice(1);
+      localStorage.setItem('claudechat_user_name', formatted);
+    }
+  }, [user]);
 
   // Load from localStorage after mount
   useEffect(() => {
@@ -255,7 +283,7 @@ export default function ChatInterface() {
   }, []);
 
   // Backend integration point: replace simulateStream with real fetch to /api/chat
-  const sendMessage = useCallback(async (content: string, images?: string[], newSources?: Source[]) => {
+  const sendMessage = useCallback(async (content: string, images?: string[], newSources?: Source[], language?: string, modelOverride?: string) => {
     if ((!content.trim() && !images?.length && !newSources?.length) || isStreaming) return;
     const titleSource = content.trim() || (images?.length ? 'Shared a photo' : 'Shared a file');
 
@@ -265,12 +293,14 @@ export default function ChatInterface() {
     // still gets derived from the first real message sent into it.
     let isNewConv = convId ? conversations.find(c => c.id === convId)?.messages.length === 0 : false;
 
+    const effectiveModelId = modelOverride || selectedModel.id;
+
     if (!convId) {
       const newConv: Conversation = {
         id: generateId('conv'),
         title: getConversationTitle(titleSource),
         messages: [],
-        model: selectedModel.id,
+        model: effectiveModelId,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
         sources: newSources?.length ? newSources : undefined,
@@ -394,8 +424,18 @@ export default function ChatInterface() {
         }
       }
 
-      const clientUserName = typeof window !== 'undefined' ? localStorage.getItem('claudechat_user_name') || 'Vinay' : 'Vinay';
+      const authUserName = user?.name || (user?.email ? user.email.split('@')[0] : '');
+      const rawStoredName = typeof window !== 'undefined' ? localStorage.getItem('claudechat_user_name') : null;
+      const validStoredName = rawStoredName && rawStoredName.toLowerCase() !== 'vinay' ? rawStoredName : null;
+      const clientUserName = authUserName || validStoredName || 'Kishore';
+
+      if (typeof window !== 'undefined' && clientUserName) {
+        localStorage.setItem('claudechat_user_name', clientUserName);
+      }
+
       const clientUserNickname = typeof window !== 'undefined' ? localStorage.getItem('claudechat_user_nickname') || undefined : undefined;
+
+      const effectiveLang = language || selectedLanguage || (typeof window !== 'undefined' ? localStorage.getItem('pragna_selected_language') : null) || 'en';
 
       const authToken = getAuthToken();
       const response = await fetch('/api/chat', {
@@ -406,12 +446,14 @@ export default function ChatInterface() {
         },
         body: JSON.stringify({
           messages: history,
-          model: selectedModel.id,
+          model: effectiveModelId,
           apiKey: customKey || undefined,
           systemPrompt: customPrompt || undefined,
           userName: clientUserName,
+          userEmail: user?.email || undefined,
           userNickname: clientUserNickname,
           sourceDocumentIds: effectiveSources.length ? effectiveSources.map(s => s.id) : undefined,
+          preferredLanguage: effectiveLang !== 'auto' ? effectiveLang : undefined,
         }),
         // Server-side retries/fallbacks can legitimately take a while; this is a
         // last-resort ceiling so a fully stuck request still surfaces an error
@@ -530,7 +572,7 @@ export default function ChatInterface() {
     });
 
     setIsStreaming(false);
-  }, [activeConversationId, isStreaming, selectedModel.id, conversations]);
+  }, [activeConversationId, isStreaming, selectedModel.id, conversations, selectedLanguage]);
 
   const stopStreaming = useCallback(() => {
     setIsStreaming(false);
@@ -601,6 +643,8 @@ export default function ChatInterface() {
           sources={activeConversation?.sources}
           onAttachSource={attachSource}
           onRemoveSource={removeSource}
+          selectedLanguage={selectedLanguage}
+          onSelectLanguage={handleSelectLanguage}
         />
         {/* Live Claude-style Artifact side panel */}
         <ArtifactPanel

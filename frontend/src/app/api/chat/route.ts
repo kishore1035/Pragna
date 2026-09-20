@@ -1,5 +1,7 @@
 import { NextRequest } from 'next/server';
 import { AGENT_TOOLS_SCHEMA, executeTool } from '@/lib/agent-tools';
+import { INDIAN_LANGUAGE_MAP } from '@/lib/indianLanguages';
+import { getModelConfig } from '@/lib/modelDisplayNames';
 import { getMcpToolSchemas } from '@/lib/mcpClient';
 import { appendUsageEntry, estimateTokens } from '@/lib/usageLog';
 import * as fs from 'node:fs';
@@ -71,6 +73,73 @@ function sseChunk(content: string): string {
   })}\n\n`;
 }
 
+// Helper to detect if user is specifically asking about what model/AI they are interacting with
+function isModelIdentityQuery(query: string): boolean {
+  if (!query) return false;
+  const q = query.toLowerCase().trim();
+  const patterns = [
+    /what\s+model(\b|\s+are|\s+is|\s+am|\s+do)/i,
+    /which\s+model(\b|\s+are|\s+is|\s+am|\s+do)/i,
+    /what('s|\s+is)\s+(the|your|this|current|selected)\s+model/i,
+    /what\s+(ai|llm|engine|architecture)\s+(are\s+you|is\s+this|am\s+i)/i,
+    /what\s+version\s+are\s+you/i,
+    /who\s+are\s+you/i,
+    /who\s+made\s+you/i,
+    /what\s+is\s+your\s+name/i,
+    /are\s+you\s+(chatgpt|gpt|claude|gemini|gemma|deepseek|llama|nemotron|pragna)/i,
+    /tell\s+me\s+about\s+(your\s+)?(model|self|architecture)/i,
+    /selected\s+model/i,
+    /current\s+model/i,
+    /what\s+model/i,
+    // Multilingual common queries
+    /मॉडल/i,
+    /तुम\s+कौन\s+हो/i,
+    /आप\s+कौन\s+हैं/i,
+    /మీరు\s+ఎవరు/i,
+    /నీ\s+మోడల్/i,
+    /మీ\s+మోడల్/i,
+    /നീ\s+ആരാണ്/i,
+    /ഏത്\s+മോഡൽ/i,
+    /તમે\s+કોણ\s+છો/i,
+    /তুমি\s+কে/i,
+    /আপুনি\s+কোন/i,
+    /ਤੁਸੀਂ\s+ਕੌਣ\s+ਹੋ/i,
+    /ਕਿਹੜਾ\s+ਮਾਡਲ/i,
+    /କେଉଁ\s+ମଡେଲ/i,
+    /நீ\s+யார்/i,
+    /எந்த\s+மாடல்/i,
+  ];
+  return patterns.some((p) => p.test(q));
+}
+
+// Helper to detect if user is specifically asking for their name/identity
+function isUserNameQuery(query: string): boolean {
+  if (!query) return false;
+  const q = query.toLowerCase().trim();
+  const patterns = [
+    /what('s|\s+is)\s+(my|the\s+user('s)?)\s+name/i,
+    /who\s+am\s+i/i,
+    /what\s+do\s+you\s+call\s+me/i,
+    /do\s+you\s+know\s+my\s+name/i,
+    /do\s+you\s+remember\s+my\s+name/i,
+    /tell\s+me\s+my\s+name/i,
+    /what\s+is\s+my\s+username/i,
+    /my\s+name\s*\?/i,
+    // Multilingual queries
+    /मेरा\s+नाम/i, // Hindi
+    /నా\s+పేరు/i, // Telugu
+    /என்\s+பெயர்/i, // Tamil
+    /എന്റെ\s+പേര്/i, // Malayalam
+    /ನನ್ನ\s+ಹೆಸರು/i, // Kannada
+    /ਮੇਰਾ\s+ਨਾਮ/i, // Punjabi
+    /ମୋ\s+ନାମ/i, // Odia
+    /আমার\s+নাম/i, // Bengali
+    /મારું\s+નામ/i, // Gujarati
+    /माझे\s+नाव/i, // Marathi
+  ];
+  return patterns.some((p) => p.test(q));
+}
+
 // Keep this list TIGHT — false positives send chat through the slow non-streaming tool-deliberation loop.
 // Only trigger for messages that CANNOT be answered without executing a real tool.
 function queryNeedsTools(messages: any[]): boolean {
@@ -104,16 +173,24 @@ function loadMemoriesSync(): { userName: string; userNickname: string; memories:
     return _memoriesCache;
   }
   const defaultData = {
-    userName: 'Vinay',
+    userName: 'Kishore',
     userNickname: '',
-    memories: ["User's name is Vinay.", "User is creator and engineer at EtherX Innovations."],
+    memories: ["User's name is Kishore."],
   };
   for (const filePath of getMemoryFilePaths()) {
     try {
       if (fs.existsSync(filePath)) {
         const parsed = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
         const result = { ...defaultData, ...parsed };
-        if (Array.isArray(parsed.memories) && parsed.memories.length > 0) result.memories = parsed.memories;
+        if (result.userName && result.userName.toLowerCase() === 'vinay') {
+          result.userName = 'Kishore';
+        }
+        if (Array.isArray(parsed.memories) && parsed.memories.length > 0) {
+          result.memories = parsed.memories.filter((m: string) => !m.toLowerCase().includes("user's name is vinay"));
+        }
+        if (!result.memories.some((m: string) => m.toLowerCase().includes("user's name is"))) {
+          result.memories.unshift(`User's name is ${result.userName}.`);
+        }
         _memoriesCache = result;
         _memoriesCacheAge = now;
         return result;
@@ -166,24 +243,39 @@ async function refreshMemoriesFromBackend(): Promise<void> {
 
 function getPersistentMemories(customUserName?: string, customUserNickname?: string): { userName: string; userNickname: string; promptBlock: string } {
   const data = loadMemoriesSync();
-  const userName = customUserName || data.userName;
+  const userName = (customUserName && customUserName.toLowerCase() !== 'vinay')
+    ? customUserName
+    : (data.userName && data.userName.toLowerCase() !== 'vinay' ? data.userName : 'Kishore');
   let userNickname = customUserNickname || data.userNickname;
+
+  // Filter out any stale memories with conflicting names
+  const validMemories = (data.memories || []).filter((m) => {
+    const nameMatch = m.match(/User's name is\s+([^.]+)/i);
+    if (nameMatch) {
+      return nameMatch[1].trim().toLowerCase() === userName.toLowerCase();
+    }
+    return true;
+  });
+
+  if (!validMemories.some((m) => m.toLowerCase().includes(`user's name is ${userName.toLowerCase()}`))) {
+    validMemories.unshift(`User's name is ${userName}.`);
+  }
 
   // Pull nickname from memory facts if not set
   if (!userNickname) {
-    for (const m of data.memories) {
+    for (const m of validMemories) {
       const nickMatch = m.match(/User's nickname is\s+([^.]+)/i);
       if (nickMatch) { userNickname = nickMatch[1].trim(); break; }
     }
   }
 
-  const memoryLines = data.memories.map(m => `  • ${m}`).join('\n');
+  const memoryLines = validMemories.map(m => `  • ${m}`).join('\n');
   const promptBlock = `\n\nUSER IDENTITY & PERSISTENT MEMORY (Always active across all conversations & tabs):
-- User's Name: ${userName}
+- User's Real/Given Name: ${userName}
 ${userNickname ? `- User's Nickname: ${userNickname}` : ''}
 - CRITICAL INSTRUCTIONS REGARDING USER IDENTITY & MEMORY:
-  1. User's Legal/Given Name: ${userName}. When the user asks "what's my name", state their name is ${userName}.
-  2. User's Nickname: ${userNickname ? `The user's established nickname is strictly "${userNickname}". State it accurately. Do NOT invent nicknames.` : 'Check the durable facts below for any recorded nickname.'}
+  1. User's Real/Given Name: ${userName}. When the user asks "what is my name", "who am I", or asks for their identity, you MUST check this identity record and state clearly, directly, and accurately that their name is ${userName}.
+  2. User's Nickname: ${userNickname ? `The user's established nickname is strictly "${userNickname}". State it accurately.` : 'No separate nickname set.'}
   3. Durable facts you remember about ${userName}:
 ${memoryLines}
   4. NEVER confuse your name (Pragna) with the user's name (${userName}).`;
@@ -192,13 +284,14 @@ ${memoryLines}
 }
 
 
-function updateMemoriesFromMessage(content: string) {
+function updateMemoriesFromMessage(content: string, currentUserName?: string) {
   if (!content) return;
   const targetPaths = getMemoryFilePaths();
+  const effectiveName = (currentUserName && currentUserName.toLowerCase() !== 'vinay') ? currentUserName : 'Kishore';
   let data = {
-    userName: 'Vinay',
+    userName: effectiveName,
     userNickname: '',
-    memories: ["User's name is Vinay.", "User is creator and engineer at EtherX Innovations."]
+    memories: [`User's name is ${effectiveName}.`]
   };
 
   for (const filePath of targetPaths) {
@@ -206,7 +299,12 @@ function updateMemoriesFromMessage(content: string) {
       if (fs.existsSync(filePath)) {
         const loaded = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
         data = { ...data, ...loaded };
-        if (Array.isArray(loaded.memories)) data.memories = loaded.memories;
+        if (data.userName && data.userName.toLowerCase() === 'vinay') {
+          data.userName = effectiveName;
+        }
+        if (Array.isArray(loaded.memories)) {
+          data.memories = loaded.memories.filter((m: string) => !m.toLowerCase().includes("user's name is vinay"));
+        }
         break;
       }
     } catch (e) {}
@@ -458,6 +556,7 @@ export async function POST(req: NextRequest) {
       systemPrompt: customSystemPrompt,
       userName: clientUserName,
       sourceDocumentIds,
+      preferredLanguage,
     } = body;
 
     const omniKey = getOmnirouteKey();
@@ -469,11 +568,12 @@ export async function POST(req: NextRequest) {
 
     // Inspect user's last message for durable facts to persist
     const lastUserMessage = messages[messages.length - 1]?.content || '';
-    updateMemoriesFromMessage(lastUserMessage);
+    updateMemoriesFromMessage(lastUserMessage, clientUserName);
 
-    // Retrieve memories synchronously from cache/disk (fast), refresh backend in background
-    const { promptBlock } = getPersistentMemories(clientUserName, body.userNickname);
-    refreshMemoriesFromBackend(); // fire-and-forget — updates cache for next request
+    // Backend SQLite is the shared memory store: pull it first so every model,
+    // on every request, sees the same facts.
+    await refreshMemoriesFromBackend();
+    const { userName: resolvedUserName, userNickname: resolvedUserNickname, promptBlock } = getPersistentMemories(clientUserName, body.userNickname);
     let targetModel = MODEL_MAP[model] || model;
     const hasImages = messages.some((m: any) => Array.isArray(m.images) && m.images.length > 0);
     // Populated by the source-grounded retrieval block below; sent to the client
@@ -493,6 +593,97 @@ export async function POST(req: NextRequest) {
       }
       return { role: m.role, content: m.content };
     });
+
+    // Resolve active model metadata
+    const modelConfig = getModelConfig(model) || getModelConfig(targetModel);
+    const modelDisplayName = modelConfig?.displayName || (model.includes('/') ? model.split('/')[1] : model);
+    const modelScript = modelConfig?.sanskritScript ? ` (${modelConfig.sanskritScript})` : '';
+    const modelRaw = modelConfig?.rawName || targetModel;
+    const modelMeaning = modelConfig?.meaning ? ` — meaning "${modelConfig.meaning}"` : '';
+    const modelDesc = modelConfig?.description ? ` (${modelConfig.description})` : '';
+
+    const modelIdentityDirective = `[ACTIVE SELECTED MODEL & IDENTITY DIRECTIVE]:
+You are Pragna, India's sovereign AI assistant created by EtherX Innovations within the IgniteX team.
+You are currently operating on the "${modelDisplayName}"${modelScript} model tier, powered by ${modelRaw}${modelMeaning}${modelDesc}.
+
+IDENTITY INSTRUCTIONS:
+- Whenever the user asks "what model are you?", "which model is this?", "who are you?", "what model am I using?", "what AI is this?", or asks about your engine, model tier, or identity:
+  1. Clearly and directly state that you are Pragna, created by EtherX Innovations within the IgniteX team.
+  2. State that you are currently running on the "${modelDisplayName}"${modelScript} model tier, powered by ${modelRaw}.
+  3. You may also mention what "${modelDisplayName}" signifies (${modelConfig?.meaning || 'intelligence'}${modelDesc ? ' · ' + modelDesc : ''}).
+  4. NEVER output generic provider defaults like "I am a large language model, trained by Google", "I am Claude, an AI created by Anthropic", or "I am DeepSeek" without first explicitly declaring that you are Pragna running on the selected ${modelDisplayName}${modelScript} (${modelRaw}) model tier.`;
+
+    // Indian Multilingual Intelligence directive
+    console.log(`[Chat API] preferredLanguage: ${preferredLanguage}, model: ${model} (${modelDisplayName}), user: ${resolvedUserName}`);
+    const langInfo = preferredLanguage && preferredLanguage !== 'auto' ? INDIAN_LANGUAGE_MAP[preferredLanguage] : null;
+    const languageDirective = langInfo
+      ? (langInfo.code === 'en'
+          ? `[CRITICAL MANDATORY LANGUAGE DIRECTIVE]: The user's chosen language is English. You MUST compose your entire response in clear, fluent, natural English.`
+          : `[CRITICAL MANDATORY LANGUAGE DIRECTIVE]: The user has explicitly selected ${langInfo.name} (${langInfo.nativeName}) as their active interface language.
+Regardless of what language the user asks their question in (even if asked in English or Hinglish), you MUST compose your ENTIRE reply in ${langInfo.name} using its proper native script (${langInfo.script}).
+Every sentence, greeting, and explanation MUST be in ${langInfo.name} (${langInfo.nativeName}). Do NOT reply in English. Only retain English for code blocks if programming code is requested.`)
+      : `[INDIAN MULTILINGUAL INTELLIGENCE]: You are Pragna, India's sovereign multilingual AI assistant with native fluency across all 22 official languages of India (Hindi, Bengali, Telugu, Marathi, Tamil, Urdu, Gujarati, Kannada, Malayalam, Odia, Punjabi, Assamese, Maithili, Sanskrit, Santali, Kashmiri, Nepali, Konkani, Sindhi, Dogri, Manipuri/Meitei, Bodo) plus Bhojpuri and Indian English. Automatically detect the user's language and respond naturally in that exact same language and native script.`;
+
+    const basePrompt = customSystemPrompt || SYSTEM_PROMPT;
+    const systemPromptParts = [
+      basePrompt,
+      modelIdentityDirective,
+      promptBlock ? `[USER CONTEXT & PERSISTENT MEMORIES]:\n${promptBlock}` : '',
+      languageDirective,
+    ].filter(Boolean);
+
+    conversationHistory.unshift({
+      role: 'system',
+      content: systemPromptParts.join('\n\n'),
+    });
+
+    // Reinforce model identity instruction if user specifically asks about the model or identity
+    if (isModelIdentityQuery(lastUserMessage)) {
+      const lastUserItem = [...conversationHistory].reverse().find((m) => m.role === 'user');
+      if (lastUserItem) {
+        const modelReminder = `\n\n[MANDATORY SYSTEM DIRECTIVE: The user is specifically asking what model you are or who you are. You MUST state that you are Pragna, currently operating on the selected "${modelDisplayName}"${modelScript} model tier, powered by ${modelRaw}. Do not give a generic provider response.]`;
+        if (typeof lastUserItem.content === 'string') {
+          lastUserItem.content += modelReminder;
+        } else if (Array.isArray(lastUserItem.content)) {
+          const textPart = lastUserItem.content.find((p: any) => p.type === 'text');
+          if (textPart) {
+            textPart.text += modelReminder;
+          }
+        }
+      }
+    }
+
+    // Reinforce user name instruction if user asks what their name is
+    if (isUserNameQuery(lastUserMessage)) {
+      const lastUserItem = [...conversationHistory].reverse().find((m) => m.role === 'user');
+      if (lastUserItem) {
+        const nameReminder = `\n\n[MANDATORY USER IDENTITY DIRECTIVE: The user is specifically asking what their name is. You MUST check the user identity context and state directly and accurately that their name is ${resolvedUserName}${resolvedUserNickname ? ` (and their nickname is ${resolvedUserNickname})` : ''}. State their name clearly and warmly.]`;
+        if (typeof lastUserItem.content === 'string') {
+          lastUserItem.content += nameReminder;
+        } else if (Array.isArray(lastUserItem.content)) {
+          const textPart = lastUserItem.content.find((p: any) => p.type === 'text');
+          if (textPart) {
+            textPart.text += nameReminder;
+          }
+        }
+      }
+    }
+
+    // Reinforce language requirement directly on the user's query
+    if (langInfo && langInfo.code !== 'en') {
+      const lastUserItem = [...conversationHistory].reverse().find((m) => m.role === 'user');
+      if (lastUserItem) {
+        const langReminder = `\n\n[MANDATORY INSTRUCTION: Reply to this message strictly and entirely in ${langInfo.name} (${langInfo.nativeName}) in its native script (${langInfo.script}). Do not reply in English.]`;
+        if (typeof lastUserItem.content === 'string') {
+          lastUserItem.content += langReminder;
+        } else if (Array.isArray(lastUserItem.content)) {
+          const textPart = lastUserItem.content.find((p: any) => p.type === 'text');
+          if (textPart) {
+            textPart.text += langReminder;
+          }
+        }
+      }
+    }
 
     // Real-time automatic web search resolution
     const autoSearch = await detectAndExecuteWebSearch(messages);

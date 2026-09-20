@@ -477,14 +477,18 @@ export async function fetchVoiceProfiles(): Promise<VoiceProfile[]> {
   }
 }
 
-export async function synthesizeSpeech(text: string, voice: string = 'en-US-AriaNeural'): Promise<Blob> {
+export async function synthesizeSpeech(
+  text: string,
+  voice: string = 'en-US-AriaNeural',
+  language?: string
+): Promise<Blob> {
   const res = await fetch(`${API_BASE}/api/voice/tts`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       ..._authHeaders(),
     },
-    body: JSON.stringify({ text, voice }),
+    body: JSON.stringify({ text, voice, language }),
   });
   if (!res.ok) throw new Error('Speech synthesis failed');
   return res.blob();

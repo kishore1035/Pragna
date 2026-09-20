@@ -1,10 +1,11 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
-import { Copy, ThumbsUp, ThumbsDown, RotateCcw, Check, Download, FileText, ChevronDown } from 'lucide-react';
+import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+import { Copy, ThumbsUp, ThumbsDown, RotateCcw, Check, Download, FileText, Volume2, Square, Loader2, ChevronDown } from 'lucide-react';
 import { Message } from '../types/chat';
 import MarkdownRenderer from './MarkdownRenderer';
 import AppLogo from '@/components/ui/AppLogo';
+import { synthesizeSpeech } from '@/lib/api';
 
 interface MessageBubbleProps {
   message: Message;
@@ -12,6 +13,7 @@ interface MessageBubbleProps {
   isStreaming?: boolean;
   showDateSeparator?: boolean;
   dateSeparatorLabel?: string;
+  selectedLanguage?: string;
   onOpenArtifact?: (title: string, content: string, language?: string) => void;
   onRetry?: () => void;
 }
@@ -53,11 +55,54 @@ export default function MessageBubble({
   isStreaming = false,
   showDateSeparator,
   dateSeparatorLabel,
+  selectedLanguage,
   onOpenArtifact,
   onRetry,
 }: MessageBubbleProps) {
   const [copied, setCopied] = useState(false);
   const [thumbState, setThumbState] = useState<'up' | 'down' | null>(null);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [isLoadingSpeech, setIsLoadingSpeech] = useState(false);
+
+  const currentAudioRef = useRef<HTMLAudioElement | null>(null);
+  const audioUrlRef = useRef<string | null>(null);
+
+  const stopSpeech = useCallback(() => {
+    if (currentAudioRef.current) {
+      currentAudioRef.current.pause();
+      currentAudioRef.current.currentTime = 0;
+      currentAudioRef.current = null;
+    }
+    if (audioUrlRef.current) {
+      URL.revokeObjectURL(audioUrlRef.current);
+      audioUrlRef.current = null;
+    }
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+    }
+    setIsSpeaking(false);
+    setIsLoadingSpeech(false);
+  }, []);
+
+  useEffect(() => {
+    const handleSpeechStart = (e: Event) => {
+      const custom = e as CustomEvent;
+      if (custom.detail !== message.id) {
+        stopSpeech();
+      }
+    };
+    const handleSpeechStop = () => {
+      stopSpeech();
+    };
+
+    window.addEventListener('pragna:speech-start', handleSpeechStart);
+    window.addEventListener('pragna:speech-stop', handleSpeechStop);
+    return () => {
+      window.removeEventListener('pragna:speech-start', handleSpeechStart);
+      window.removeEventListener('pragna:speech-stop', handleSpeechStop);
+      stopSpeech();
+    };
+  }, [message.id, stopSpeech]);
   const [openCitation, setOpenCitation] = useState<number | null>(null);
   const isThinking = message.role === 'assistant' && message.content === '' && message.isStreaming;
   const isErrorMessage = message.role === 'assistant' && (
@@ -91,6 +136,198 @@ export default function MessageBubble({
     await navigator.clipboard.writeText(message.content);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const speakWithBrowser = (cleanText: string, targetLang: string) => {
+    if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
+      setIsSpeaking(false);
+      setIsLoadingSpeech(false);
+      return;
+    }
+
+    window.speechSynthesis.cancel();
+    if (window.speechSynthesis.paused) {
+      window.speechSynthesis.resume();
+    }
+
+    let textToSpeak = cleanText;
+    let actualLang = targetLang;
+
+    // Transliterate Odia (\u0B00-\u0B7F) to Devanagari so browser speech synthesis can pronounce it
+    if (/[\u0B00-\u0B7F]/.test(cleanText) || targetLang === 'or-IN' || targetLang === 'or') {
+      textToSpeak = cleanText.replace(/[\u0B00-\u0B7F]/g, (ch) => {
+        const code = ch.charCodeAt(0);
+        if (code === 0x0b71) return '\u0935';
+        return String.fromCharCode(code - 0x0200);
+      });
+      actualLang = 'hi-IN';
+    } else if (/[\u0A00-\u0A7F]/.test(cleanText) || targetLang === 'pa-IN' || targetLang === 'pa') {
+      textToSpeak = cleanText.replace(/[\u0A00-\u0A7F]/g, (ch) => {
+        return String.fromCharCode(ch.charCodeAt(0) - 0x0100);
+      });
+      actualLang = 'hi-IN';
+    }
+
+    const utterance = new SpeechSynthesisUtterance(textToSpeak);
+    utterance.lang = actualLang;
+    utterance.pitch = 1.05;
+    utterance.rate = 1.0;
+
+    const voices = window.speechSynthesis.getVoices();
+    const targetLangLower = actualLang.toLowerCase();
+    const langPrefix = targetLangLower.slice(0, 2);
+
+    // Only assign a voice if it matches the target language!
+    // NEVER assign an English voice to an Indian script utterance.
+    const matchingVoice =
+      voices.find((v) => v.lang.toLowerCase() === targetLangLower) ||
+      voices.find((v) => v.lang.toLowerCase().startsWith(langPrefix));
+
+    if (matchingVoice) {
+      utterance.voice = matchingVoice;
+    } else if (langPrefix === 'en') {
+      const englishVoice =
+        voices.find((v) => v.lang.toLowerCase().startsWith('en') && /female|zira|neerja|samantha/i.test(v.name)) ||
+        voices.find((v) => v.lang.toLowerCase().startsWith('en'));
+      if (englishVoice) utterance.voice = englishVoice;
+    }
+
+    utterance.onstart = () => {
+      setIsLoadingSpeech(false);
+      setIsSpeaking(true);
+    };
+    utterance.onend = () => {
+      setIsSpeaking(false);
+      setIsLoadingSpeech(false);
+    };
+    utterance.onerror = (e) => {
+      console.warn('SpeechSynthesis error:', e);
+      setIsSpeaking(false);
+      setIsLoadingSpeech(false);
+    };
+
+    window.speechSynthesis.speak(utterance);
+  };
+
+  const toggleSpeech = async () => {
+    if (isSpeaking || isLoadingSpeech) {
+      stopSpeech();
+      return;
+    }
+
+    stopSpeech();
+
+    // Clean text for speech
+    const cleanText = message.content
+      .replace(/```[\s\S]*?```/g, '') // remove code blocks
+      .replace(/`([^`]+)`/g, '$1') // remove inline code backticks
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // remove markdown links
+      .replace(/[#*_~>|•]/g, '') // remove markdown formatting symbols
+      .replace(/[\u{1F300}-\u{1FAFF}\u{1F600}-\u{1F64F}\u{1F680}-\u{1F6FF}\u{2600}-\u{27BF}\u{FE00}-\u{FE0F}]/gu, '') // strip emojis
+      .replace(/(\r\n|\n|\r)+/g, ' ') // convert linebreaks to spaces
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    if (!cleanText) return;
+
+    // Detect language script for optimal pronunciation
+    const hasTelugu = /[\u0C00-\u0C7F]/.test(cleanText);
+    const hasTamil = /[\u0B80-\u0BFF]/.test(cleanText);
+    const hasBengali = /[\u0980-\u09FF]/.test(cleanText);
+    const hasKannada = /[\u0C80-\u0CFF]/.test(cleanText);
+    const hasMalayalam = /[\u0D00-\u0D7F]/.test(cleanText);
+    const hasGujarati = /[\u0A80-\u0AFF]/.test(cleanText);
+    const hasPunjabi = /[\u0A00-\u0A7F]/.test(cleanText);
+    const hasOdia = /[\u0B00-\u0B7F]/.test(cleanText);
+    const hasUrdu = /[\u0600-\u06FF]/.test(cleanText);
+    const hasDevanagari = /[\u0900-\u097F]/.test(cleanText);
+
+    const activeLanguage =
+      selectedLanguage ||
+      (typeof window !== 'undefined' ? localStorage.getItem('pragna_selected_language') : null) ||
+      'auto';
+
+    let targetLang = 'en-IN';
+    let targetVoice = 'en-IN-NeerjaNeural';
+
+    if (hasTelugu || activeLanguage === 'te') {
+      targetLang = 'te-IN';
+      targetVoice = 'te-IN-ShrutiNeural';
+    } else if (hasTamil || activeLanguage === 'ta') {
+      targetLang = 'ta-IN';
+      targetVoice = 'ta-IN-PallaviNeural';
+    } else if (hasBengali || activeLanguage === 'bn' || activeLanguage === 'as') {
+      targetLang = 'bn-IN';
+      targetVoice = 'bn-IN-TanishaaNeural';
+    } else if (hasKannada || activeLanguage === 'kn') {
+      targetLang = 'kn-IN';
+      targetVoice = 'kn-IN-SapnaNeural';
+    } else if (hasMalayalam || activeLanguage === 'ml') {
+      targetLang = 'ml-IN';
+      targetVoice = 'ml-IN-SobhanaNeural';
+    } else if (hasGujarati || activeLanguage === 'gu') {
+      targetLang = 'gu-IN';
+      targetVoice = 'gu-IN-DhwaniNeural';
+    } else if (hasPunjabi || activeLanguage === 'pa') {
+      targetLang = 'pa-IN';
+      targetVoice = 'hi-IN-SwaraNeural';
+    } else if (hasUrdu || activeLanguage === 'ur') {
+      targetLang = 'ur-IN';
+      targetVoice = 'ur-IN-GulNeural';
+    } else if (hasOdia || activeLanguage === 'or') {
+      targetLang = 'or-IN';
+      targetVoice = 'hi-IN-SwaraNeural';
+    } else if (hasDevanagari || ['hi', 'mr', 'ne', 'sa', 'bho', 'mai', 'kok'].includes(activeLanguage)) {
+      if (activeLanguage === 'mr') {
+        targetLang = 'mr-IN';
+        targetVoice = 'mr-IN-AarohiNeural';
+      } else if (activeLanguage === 'ne') {
+        targetLang = 'ne-NP';
+        targetVoice = 'ne-NP-HemkalaNeural';
+      } else {
+        targetLang = 'hi-IN';
+        targetVoice = 'hi-IN-SwaraNeural';
+      }
+    } else if (activeLanguage === 'en' || activeLanguage === 'en-IN') {
+      targetLang = 'en-IN';
+      targetVoice = 'en-IN-NeerjaNeural';
+    }
+
+    setIsLoadingSpeech(true);
+    window.dispatchEvent(new CustomEvent('pragna:speech-start', { detail: message.id }));
+
+    // Strategy 1: High-definition neural audio via Next.js / FastAPI TTS endpoint
+    try {
+      const speechSnippet = cleanText.length > 1500 ? cleanText.slice(0, 1500) + '...' : cleanText;
+      const blob = await synthesizeSpeech(speechSnippet, targetVoice, targetLang.slice(0, 2));
+
+      if (blob && blob.size > 200) {
+        const audioUrl = URL.createObjectURL(blob);
+        audioUrlRef.current = audioUrl;
+        const audio = new Audio(audioUrl);
+        currentAudioRef.current = audio;
+
+        audio.onplay = () => {
+          setIsLoadingSpeech(false);
+          setIsSpeaking(true);
+        };
+        audio.onended = () => {
+          stopSpeech();
+        };
+        audio.onerror = () => {
+          stopSpeech();
+          speakWithBrowser(cleanText, targetLang);
+        };
+
+        await audio.play();
+        return;
+      }
+    } catch (err) {
+      console.warn('Server TTS failed, falling back to browser SpeechSynthesis:', err);
+    }
+
+    // Strategy 2: Client-side SpeechSynthesis fallback
+    speakWithBrowser(cleanText, targetLang);
   };
 
   return (
@@ -260,6 +497,20 @@ export default function MessageBubble({
                           icon={copied ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
                           label={copied ? 'Copied!' : 'Copy response'}
                           onClick={copyMessage}
+                        />
+                        <ActionButton
+                          icon={
+                            isLoadingSpeech ? (
+                              <Loader2 size={12} className="text-primary animate-spin" />
+                            ) : isSpeaking ? (
+                              <Square size={11} className="text-primary fill-primary animate-pulse" />
+                            ) : (
+                              <Volume2 size={12} />
+                            )
+                          }
+                          label={isLoadingSpeech ? 'Synthesizing...' : isSpeaking ? 'Stop reading' : 'Read aloud'}
+                          onClick={toggleSpeech}
+                          active={isSpeaking || isLoadingSpeech}
                         />
                         <ActionButton
                           icon={<ThumbsUp size={12} className={thumbState === 'up' ? 'text-primary fill-primary/20' : ''} />}
