@@ -129,7 +129,7 @@ export default function Sidebar({
             <div
               className="flex items-center cursor-pointer select-none py-0.5"
               onClick={onNewConversation}
-              title="Pragna AI - Start new chat"
+              title="PRAGNA 1-A - Start new chat"
             >
               <AppLogo size={30} variant="full" />
             </div>
