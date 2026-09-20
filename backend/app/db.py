@@ -142,6 +142,20 @@ def _migrate_users_oauth_columns(conn: sqlite3.Connection) -> None:
     conn.execute("ALTER TABLE users_new RENAME TO users")
 
 
+def _migrate_scheduled_jobs_columns(conn: sqlite3.Connection) -> None:
+    columns = [row[1] for row in conn.execute("PRAGMA table_info(scheduled_jobs)").fetchall()]
+    if "title" not in columns:
+        try:
+            conn.execute("ALTER TABLE scheduled_jobs ADD COLUMN title TEXT")
+        except Exception:
+            pass
+    if "last_run" not in columns:
+        try:
+            conn.execute("ALTER TABLE scheduled_jobs ADD COLUMN last_run TEXT")
+        except Exception:
+            pass
+
+
 def init_db(db_path: str) -> None:
     Path(db_path).parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(db_path, timeout=30.0)
@@ -150,6 +164,7 @@ def init_db(db_path: str) -> None:
     conn.executescript(SCHEMA)
     _migrate_conversations_user_id(conn)
     _migrate_users_oauth_columns(conn)
+    _migrate_scheduled_jobs_columns(conn)
     conn.commit()
     conn.close()
 
