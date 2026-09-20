@@ -6,6 +6,15 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
+    def __init__(self, *args, _env_file=..., **kwargs):
+        if _env_file is None:
+            kwargs.setdefault("email_auth_enabled", False)
+            super().__init__(*args, _env_file=None, **kwargs)
+        elif _env_file is not ...:
+            super().__init__(*args, _env_file=_env_file, **kwargs)
+        else:
+            super().__init__(*args, **kwargs)
+
     ollama_url: str = "http://localhost:11434"
 
     @field_validator("ollama_url", mode="before")
@@ -30,6 +39,32 @@ class Settings(BaseSettings):
     google_client_secret: str | None = None
     github_client_id: str | None = None
     github_client_secret: str | None = None
+
+    # EmailJS & Email Auth configuration
+    email_auth_enabled: bool = False
+    emailjs_service_id: str | None = None
+    emailjs_template_id_otp: str | None = None
+    emailjs_template_id_reset: str | None = None
+    emailjs_public_key: str | None = None
+    emailjs_private_key: str | None = None
+    otp_ttl_minutes: int = 10
+    otp_max_attempts: int = 5
+    email_cooldown_seconds: int = 60
+    reset_token_ttl_minutes: int = 30
+
+    def is_emailjs_configured(self) -> bool:
+        return bool(
+            self.emailjs_service_id
+            and self.emailjs_service_id.strip()
+            and self.emailjs_template_id_otp
+            and self.emailjs_template_id_otp.strip()
+            and self.emailjs_template_id_reset
+            and self.emailjs_template_id_reset.strip()
+            and self.emailjs_public_key
+            and self.emailjs_public_key.strip()
+            and self.emailjs_private_key
+            and self.emailjs_private_key.strip()
+        )
 
     # Ollama API Key(s) — supports a single key, a comma-separated list,
     # or numbered slots OLLAMA_API_KEY_1 through OLLAMA_API_KEY_9 for load balancing

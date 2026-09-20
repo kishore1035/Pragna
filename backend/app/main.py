@@ -75,6 +75,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         fastapi_app.state.memories_collection = get_memories_chroma_collection(settings)
         fastapi_app.state.browser_service = BrowserService()
 
+        if settings.email_auth_enabled and not settings.is_emailjs_configured():
+            import logging
+            logging.getLogger(__name__).warning(
+                "EMAIL_AUTH_ENABLED is True but EmailJS configuration is incomplete. "
+                "Email auth endpoints will return 503 Service Unavailable until configured."
+            )
+
         from app.cron_service import run_scheduled_jobs_worker
         import asyncio
         asyncio.create_task(run_scheduled_jobs_worker(fastapi_app.state.conn))
