@@ -279,9 +279,8 @@ async def verify_token_endpoint(current_user: dict = Depends(get_current_user)):
 
 
 async def _send_forgot_password_email(db_path: str, settings, email: str) -> None:
-    import sqlite3
-    conn = sqlite3.connect(db_path, timeout=30.0)
-    conn.row_factory = sqlite3.Row
+    from app.db import get_connection
+    conn = get_connection(db_path, getattr(settings, "database_url", None))
     try:
         user = repository.get_user_by_email(conn, email)
         if not user or not user["password_hash"]:

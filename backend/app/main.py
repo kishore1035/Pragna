@@ -69,8 +69,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @fastapi_app.on_event("startup")
     async def startup():
-        init_db(settings.db_path)
-        fastapi_app.state.conn = get_connection(settings.db_path)
+        init_db(settings.db_path, settings.database_url)
+        fastapi_app.state.conn = get_connection(settings.db_path, settings.database_url)
         fastapi_app.state.collection = get_chroma_collection(settings)
         fastapi_app.state.memories_collection = get_memories_chroma_collection(settings)
         fastapi_app.state.browser_service = BrowserService()

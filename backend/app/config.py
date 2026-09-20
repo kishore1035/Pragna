@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     def __init__(self, *args, _env_file=..., **kwargs):
         if _env_file is None:
             kwargs.setdefault("email_auth_enabled", False)
+            kwargs.setdefault("database_url", None)
             super().__init__(*args, _env_file=None, **kwargs)
         elif _env_file is not ...:
             super().__init__(*args, _env_file=_env_file, **kwargs)
@@ -32,6 +33,7 @@ class Settings(BaseSettings):
     embed_model: str = "nomic-embed-text"
     rag_similarity_threshold: float = 0.5
     db_path: str = "data/pragna.db"
+    database_url: str | None = None
     chroma_path: str = "data/chroma_db"
     documents_dir: str = "data/documents"
     jwt_secret: str
