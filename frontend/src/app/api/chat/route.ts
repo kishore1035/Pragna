@@ -471,9 +471,10 @@ export async function POST(req: NextRequest) {
     const lastUserMessage = messages[messages.length - 1]?.content || '';
     updateMemoriesFromMessage(lastUserMessage);
 
-    // Retrieve memories synchronously from cache/disk (fast), refresh backend in background
+    // Backend SQLite is the shared memory store: pull it first so every model,
+    // on every request, sees the same facts.
+    await refreshMemoriesFromBackend();
     const { promptBlock } = getPersistentMemories(clientUserName, body.userNickname);
-    refreshMemoriesFromBackend(); // fire-and-forget — updates cache for next request
     let targetModel = MODEL_MAP[model] || model;
     const hasImages = messages.some((m: any) => Array.isArray(m.images) && m.images.length > 0);
     // Populated by the source-grounded retrieval block below; sent to the client
@@ -493,6 +494,9 @@ export async function POST(req: NextRequest) {
       }
       return { role: m.role, content: m.content };
     });
+
+    // Same memory block for every model (OpenRouter, Omniroute, Ollama fallback).
+    conversationHistory.unshift({ role: 'system', content: promptBlock.trim() });
 
     // Real-time automatic web search resolution
     const autoSearch = await detectAndExecuteWebSearch(messages);
