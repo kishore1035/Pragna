@@ -11,6 +11,7 @@ import { generateId, getConversationTitle, groupConversationsByDate } from '../u
 import { SANSKRIT_MODELS } from '@/lib/modelDisplayNames';
 import { getAuthToken } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
+import { notifyIfBackgrounded } from '@/lib/notifications';
 import { toast } from 'sonner';
 
 export const MODELS: ModelOption[] = SANSKRIT_MODELS.map((m) => ({
@@ -130,6 +131,9 @@ export default function ChatInterface() {
     setConversations(fixedConvs);
     setActiveConversationId(savedActive);
     setTheme(savedTheme);
+    if (window.matchMedia('(max-width: 1023px)').matches) {
+      setSidebarOpen(false);
+    }
     setMounted(true);
   }, []);
 
@@ -167,6 +171,7 @@ export default function ChatInterface() {
           if (seenCompletedIds.has(job.id)) continue;
           seenCompletedIds.add(job.id);
           toast(job.prompt, { icon: '⏰', duration: 10000 });
+          notifyIfBackgrounded('Pragna reminder', job.prompt);
 
           const convId = activeConversationIdRef.current;
           if (convId) {
@@ -194,7 +199,7 @@ export default function ChatInterface() {
     poll();
     const interval = setInterval(poll, 8000);
     return () => clearInterval(interval);
-  }, [user]);
+  }, [user?.id]);
 
   // Apply theme to document
   useEffect(() => {
@@ -462,6 +467,36 @@ export default function ChatInterface() {
         const decoder = new TextDecoder();
         let buffer = '';
 
+        let pendingDelta = '';
+        let pendingCitations: any[] | null = null;
+        let lastFlush = Date.now();
+
+        const flushStream = () => {
+          if (!pendingDelta && !pendingCitations) return;
+          const deltaToFlush = pendingDelta;
+          const citationsToFlush = pendingCitations;
+          pendingDelta = '';
+          pendingCitations = null;
+
+          setConversations(prev =>
+            prev.map(c => {
+              if (c.id !== convId) return c;
+              return {
+                ...c,
+                messages: c.messages.map(m => {
+                  if (m.id !== assistantMessageId) return m;
+                  return {
+                    ...m,
+                    content: m.content + deltaToFlush,
+                    ...(citationsToFlush ? { citations: citationsToFlush } : {}),
+                    isStreaming: true,
+                  };
+                }),
+              };
+            })
+          );
+        };
+
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
@@ -479,28 +514,23 @@ export default function ChatInterface() {
                 const delta = data.choices?.[0]?.delta?.content || '';
                 if (delta) {
                   streamedAny = true;
-                  setConversations(prev => {
-                    const updated = prev.map(c => {
-                      if (c.id !== convId) return c;
-                      return {
-                        ...c,
-                        messages: c.messages.map(m =>
-                          m.id === assistantMessageId
-                            ? { ...m, content: m.content + delta, isStreaming: true }
-                            : m
-                        ),
-                      };
-                    });
-                    saveConversations(updated);
-                    return updated;
-                  });
+                  pendingDelta += delta;
+                }
+                if (Array.isArray(data.citations) && data.citations.length > 0) {
+                  pendingCitations = data.citations;
                 }
               } catch {
                 // Ignore chunk parse error
               }
             }
           }
+
+          if (Date.now() - lastFlush > 50) {
+            flushStream();
+            lastFlush = Date.now();
+          }
         }
+        flushStream();
       }
     } catch (err) {
       console.error('Streaming error from /api/chat:', err);

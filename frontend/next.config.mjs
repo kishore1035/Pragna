@@ -2,7 +2,7 @@ import { imageHosts } from './image-hosts.config.mjs';
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  productionBrowserSourceMaps: true,
+  productionBrowserSourceMaps: false,
   distDir: process.env.DIST_DIR || '.next',
   // The dev-mode indicator's hit-region sits over this app's own top-right
   // header controls (Share, etc.) and silently swallows clicks meant for
@@ -27,13 +27,15 @@ const nextConfig = {
     }
   ) {
     if (dev) {
-      config.module.rules.push({
-        test: /\.(jsx|tsx)$/,
-        exclude: [/node_modules/],
-        use: [{
-          loader: '@dhiwise/component-tagger/nextLoader',
-        }],
-      });
+      if (process.env.ENABLE_COMPONENT_TAGGER === 'true') {
+        config.module.rules.push({
+          test: /\.(jsx|tsx)$/,
+          exclude: [/node_modules/],
+          use: [{
+            loader: '@dhiwise/component-tagger/nextLoader',
+          }],
+        });
+      }
       const ignoredPaths = (process.env.WATCH_IGNORED_PATHS || '')
         .split(',')
         .map((p) => p.trim())
@@ -87,6 +89,14 @@ const nextConfig = {
       {
         source: '/api/auth/:path*',
         destination: 'http://localhost:8000/api/auth/:path*',
+      },
+      {
+        source: '/api/chat/:path+',
+        destination: 'http://localhost:8000/api/chat/:path*',
+      },
+      {
+        source: '/api/share/:path*',
+        destination: 'http://localhost:8000/api/share/:path*',
       },
     ];
   },

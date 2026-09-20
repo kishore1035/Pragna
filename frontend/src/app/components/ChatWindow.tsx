@@ -1,10 +1,12 @@
 'use client';
 
 import React, { useRef, useEffect, useState, useCallback } from 'react';
-import { PanelLeftOpen, Share2, ChevronDown, ArrowDown, Code2, LayoutGrid, Wrench, Search, FileText, X } from 'lucide-react';
+import { PanelLeftOpen, Share2, ChevronDown, ArrowDown, Code2, LayoutGrid, Wrench, Search, FileText, X, Download } from 'lucide-react';
 import { toast } from 'sonner';
 import { Conversation, ModelOption, Source } from '../types/chat';
-import { uploadDocument } from '@/lib/api';
+import { getAuthToken, uploadDocument } from '@/lib/api';
+import { exportConversation } from '@/lib/exportConversation';
+import { loadExportSettings } from '@/lib/exportSettings';
 import { filesToDataUrls } from '../utils/chatUtils';
 import MessageList from './MessageList';
 import ChatInput from './ChatInput';
@@ -63,10 +65,49 @@ export default function ChatWindow({
 
   const handleShare = useCallback(async () => {
     if (!conversation) return;
-    // Conversations live only in this browser's localStorage — there's no
-    // server-backed conversation URL to share, so a real "share link" isn't
-    // possible yet. Share the actual content instead of a link that would
-    // 404 for anyone else.
+    const shareableMessages = conversation.messages
+      .filter(m => m.role === 'user' || m.role === 'assistant')
+      .map(m => ({ role: m.role, content: m.content }));
+
+    let shareUrl: string | null = null;
+    try {
+      const token = getAuthToken();
+      const res = await fetch('/api/chat/0/share', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ title: conversation.title, messages: shareableMessages }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.share_url) shareUrl = `${window.location.origin}${data.share_url}`;
+      }
+    } catch {
+      // Backend unreachable — fall through to sharing raw text below.
+    }
+
+    if (shareUrl) {
+      if (typeof navigator !== 'undefined' && navigator.share) {
+        try {
+          await navigator.share({ title: conversation.title, url: shareUrl });
+          return;
+        } catch (e: any) {
+          if (e?.name === 'AbortError') return;
+        }
+      }
+      try {
+        await navigator.clipboard.writeText(shareUrl);
+        toast.success('Share link copied to clipboard');
+        return;
+      } catch {
+        toast.error('Failed to copy share link');
+        return;
+      }
+    }
+
+    // Couldn't create a share link — fall back to sharing the raw text.
     const summary = [
       conversation.title,
       '',
@@ -90,6 +131,16 @@ export default function ChatWindow({
     }
   }, [conversation]);
 
+  const handleExport = useCallback(() => {
+    if (!conversation) return;
+    try {
+      exportConversation(conversation, loadExportSettings());
+      toast.success('Conversation exported');
+    } catch {
+      toast.error('Failed to export conversation');
+    }
+  }, [conversation]);
+
   const scrollToBottom = useCallback((smooth = false) => {
     const el = scrollContainerRef.current;
     if (!el) return;
@@ -109,7 +160,7 @@ export default function ChatWindow({
     if (isStreaming && isAtBottomRef.current) {
       scrollToBottom(false);
     }
-  });
+  }, [isStreaming, scrollToBottom, conversation?.messages]);
 
   useEffect(() => {
     setTimeout(() => scrollToBottom(false), 50);
@@ -194,6 +245,19 @@ export default function ChatWindow({
               Free
             </span>
           </div>
+
+          {hasMessages && (
+            <button
+              onClick={handleExport}
+              className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium
+              text-muted-foreground hover:text-foreground hover:bg-muted border border-border/60
+              transition-all duration-150 active:scale-95"
+              title="Export conversation"
+            >
+              <Download size={12} />
+              Export
+            </button>
+          )}
 
           {hasMessages && (
             <button

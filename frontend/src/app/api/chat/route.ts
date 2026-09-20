@@ -2,6 +2,8 @@ import { NextRequest } from 'next/server';
 import { AGENT_TOOLS_SCHEMA, executeTool } from '@/lib/agent-tools';
 import { INDIAN_LANGUAGE_MAP } from '@/lib/indianLanguages';
 import { getModelConfig } from '@/lib/modelDisplayNames';
+import { getMcpToolSchemas } from '@/lib/mcpClient';
+import { appendUsageEntry, estimateTokens } from '@/lib/usageLog';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
@@ -568,11 +570,15 @@ export async function POST(req: NextRequest) {
     const lastUserMessage = messages[messages.length - 1]?.content || '';
     updateMemoriesFromMessage(lastUserMessage, clientUserName);
 
-    // Retrieve memories synchronously from cache/disk (fast), refresh backend in background
+    // Backend SQLite is the shared memory store: pull it first so every model,
+    // on every request, sees the same facts.
+    await refreshMemoriesFromBackend();
     const { userName: resolvedUserName, userNickname: resolvedUserNickname, promptBlock } = getPersistentMemories(clientUserName, body.userNickname);
-    refreshMemoriesFromBackend(); // fire-and-forget — updates cache for next request
     let targetModel = MODEL_MAP[model] || model;
     const hasImages = messages.some((m: any) => Array.isArray(m.images) && m.images.length > 0);
+    // Populated by the source-grounded retrieval block below; sent to the client
+    // as a trailing SSE event so it can render citation chips under the reply.
+    let ragCitations: { index: number; document_id: number; filename: string; snippet: string; similarity: number }[] = [];
 
     // System prompt removed per user instruction to let the model respond directly
     const conversationHistory: any[] = messages.map((m: any) => {
@@ -703,6 +709,13 @@ Every sentence, greeting, and explanation MUST be in ${langInfo.name} (${langInf
           const ragData = await ragRes.json();
           const results: any[] = ragData?.results || [];
           if (results.length > 0) {
+            ragCitations = results.map((r, i) => ({
+              index: i + 1,
+              document_id: r.document_id,
+              filename: r.filename,
+              snippet: r.snippet,
+              similarity: r.similarity,
+            }));
             const sourceList = results
               .map((r, i) => `[${i + 1}] (${r.filename}): ${r.snippet}`)
               .join('\n\n');
@@ -726,8 +739,14 @@ Every sentence, greeting, and explanation MUST be in ${langInfo.name} (${langInf
       async start(controller) {
         const encoder = new TextEncoder();
         const ollamaKeys = getBackendOllamaKeys();
+        let assistantResponseText = '';
+        // Merge in any tools discovered from configured MCP servers so the
+        // model can call them the same way it calls a built-in tool.
+        const mcpTools = await getMcpToolSchemas().catch(() => []);
+        const fullToolsSchema = mcpTools.length > 0 ? [...AGENT_TOOLS_SCHEMA, ...mcpTools] : AGENT_TOOLS_SCHEMA;
 
         const sendText = (text: string) => {
+          assistantResponseText += text;
           controller.enqueue(encoder.encode(sseChunk(text)));
         };
 
@@ -871,7 +890,7 @@ Every sentence, greeting, and explanation MUST be in ${langInfo.name} (${langInf
                   body: JSON.stringify({
                     model: activeModel,
                     messages: conversationHistory,
-                    tools: AGENT_TOOLS_SCHEMA,
+                    tools: fullToolsSchema,
                     tool_choice: 'auto',
                     temperature,
                     max_tokens: 1500,
@@ -898,7 +917,7 @@ Every sentence, greeting, and explanation MUST be in ${langInfo.name} (${langInf
                       body: JSON.stringify({
                         model: activeModel,
                         messages: conversationHistory,
-                        tools: AGENT_TOOLS_SCHEMA,
+                        tools: fullToolsSchema,
                         tool_choice: 'auto',
                         temperature,
                         max_tokens: 1500,
@@ -929,7 +948,7 @@ Every sentence, greeting, and explanation MUST be in ${langInfo.name} (${langInf
                       body: JSON.stringify({
                         model: activeModel,
                         messages: conversationHistory,
-                        tools: AGENT_TOOLS_SCHEMA,
+                        tools: fullToolsSchema,
                         tool_choice: 'auto',
                         temperature,
                         max_tokens: 1000,
@@ -952,7 +971,7 @@ Every sentence, greeting, and explanation MUST be in ${langInfo.name} (${langInf
                       body: JSON.stringify({
                         model: activeModel,
                         messages: conversationHistory,
-                        tools: AGENT_TOOLS_SCHEMA,
+                        tools: fullToolsSchema,
                         tool_choice: 'auto',
                         temperature,
                         max_tokens: 1000,
@@ -1060,6 +1079,20 @@ Every sentence, greeting, and explanation MUST be in ${langInfo.name} (${langInf
           console.error('Agent loop error:', err);
           sendText(`\n\n*(Error: ${err.message || 'Unknown error'})*\n`);
         } finally {
+          if (ragCitations.length > 0) {
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ citations: ragCitations })}\n\n`));
+          }
+          if (assistantResponseText) {
+            const promptText = conversationHistory
+              .map((m: any) => (typeof m.content === 'string' ? m.content : m.content?.[0]?.text || ''))
+              .join(' ');
+            appendUsageEntry({
+              timestamp: new Date().toISOString(),
+              model,
+              promptTokens: estimateTokens(promptText),
+              completionTokens: estimateTokens(assistantResponseText),
+            });
+          }
           controller.enqueue(encoder.encode('data: [DONE]\n\n'));
           controller.close();
         }

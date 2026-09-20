@@ -538,3 +538,19 @@ def delete_document_record(conn, document_id: int) -> None:
     conn.execute("DELETE FROM documents WHERE id = ?", (document_id,))
     conn.commit()
 
+
+def create_shared_conversation(conn, token: str, title: str, content: str, owner_user_id: int | None) -> None:
+    conn.execute(
+        "INSERT INTO shared_conversations (token, title, content, owner_user_id, created_at) VALUES (?, ?, ?, ?, ?)",
+        (token, title, content, owner_user_id, _now()),
+    )
+    conn.commit()
+
+
+def get_shared_conversation(conn, token: str) -> dict | None:
+    row = conn.execute(
+        "SELECT token, title, content, created_at FROM shared_conversations WHERE token = ?",
+        (token,),
+    ).fetchone()
+    return dict(row) if row else None
+

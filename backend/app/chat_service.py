@@ -277,7 +277,7 @@ async def _build_ollama_messages(
         memories_collection,
         settings.embed_model,
         settings.ollama_url,
-        top_k=5,
+        top_k=20,
         threshold=threshold,
         conn=conn,
         user_id=user_id,
@@ -304,6 +304,10 @@ async def _build_ollama_messages(
 
     history = repository.get_path_to_root(conn, parent_id) if parent_id is not None else []
     ollama_messages = []
+    # Same memory store feeds every model -- inject it before anything else.
+    if user_memories:
+        memory_block = "What you know about this user:\n" + "\n".join(f"- {m}" for m in user_memories)
+        ollama_messages.append({"role": "system", "content": memory_block})
     if context_sources:
         context = "\n---\n".join(f"[{s['filename']}]: {s['snippet']}" for s in context_sources)
     ollama_messages += [{"role": m["role"], "content": m["content"]} for m in history]

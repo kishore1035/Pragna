@@ -5,12 +5,21 @@ export interface Message {
   timestamp: string;
   isStreaming?: boolean;
   images?: string[]; // base64 data URLs of attached photos
+  citations?: Citation[]; // RAG passages the reply drew on, keyed to inline [n] markers
 }
 
 export interface Source {
   id: number;
   filename: string;
   chunkCount: number;
+}
+
+export interface Citation {
+  index: number;
+  document_id: number;
+  filename: string;
+  snippet: string;
+  similarity: number;
 }
 
 export interface Conversation {

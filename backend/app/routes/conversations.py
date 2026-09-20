@@ -1,3 +1,4 @@
+import json
 import uuid
 from typing import Optional
 from fastapi import APIRouter, Request, HTTPException, Depends
@@ -6,9 +7,6 @@ from app import repository
 from app.auth import get_optional_current_user, get_current_user
 
 router = APIRouter()
-
-# In-memory share tokens cache
-SHARED_CHATS: dict[str, dict] = {}
 
 
 class CreateConversationRequest(BaseModel):
@@ -124,19 +122,22 @@ async def share_chat(
     conversation = repository.get_conversation(conn, conversation_id)
     messages = body.messages if body and body.messages else (repository.list_messages(conn, conversation_id) if conversation else [])
     title = (body.title if body and body.title else (conversation["title"] if conversation else "Shared Chat"))
-    SHARED_CHATS[token] = {
-        "title": title,
-        "messages": messages,
-        "author": current_user.get("name") or current_user.get("email"),
-    }
+    repository.create_shared_conversation(
+        conn,
+        token=token,
+        title=title,
+        content=json.dumps(messages, default=str),
+        owner_user_id=current_user.get("id"),
+    )
     return {"success": True, "share_token": token, "share_url": f"/share/{token}"}
 
 
 @router.get("/api/share/{token}")
-async def get_shared_chat(token: str):
-    if token in SHARED_CHATS:
-        return {"success": True, **SHARED_CHATS[token]}
-    raise HTTPException(status_code=404, detail="Shared chat not found or expired")
+async def get_shared_chat(request: Request, token: str):
+    row = repository.get_shared_conversation(request.app.state.conn, token)
+    if not row:
+        raise HTTPException(status_code=404, detail="Shared chat not found or expired")
+    return {"success": True, "title": row["title"], "messages": json.loads(row["content"])}
 
 
 @router.get("/api/chat/search")

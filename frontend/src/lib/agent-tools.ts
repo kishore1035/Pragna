@@ -2,6 +2,7 @@ import { exec, spawn } from 'node:child_process';
 import { promisify } from 'node:util';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
+import { callMcpTool, isMcpToolName } from './mcpClient';
 
 const execAsync = promisify(exec);
 
@@ -2411,6 +2412,9 @@ export async function executeTool(name: string, args: Record<string, any>, authT
       }
 
       default:
+        if (isMcpToolName(name)) {
+          return await callMcpTool(name, args);
+        }
         return { success: false, error: `Tool ${name} not found.` };
     }
   } catch (err: any) {

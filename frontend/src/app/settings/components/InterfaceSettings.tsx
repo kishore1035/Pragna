@@ -1,8 +1,14 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Sun, Moon, Monitor, Check, Save, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
+import {
+  disableNotifications,
+  enableNotifications,
+  isNotificationsEnabled,
+  isNotificationsSupported,
+} from '@/lib/notifications';
 
 function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
   return (
@@ -33,6 +39,28 @@ export default function InterfaceSettings() {
   const [timestampsVisible, setTimestampsVisible] = useState(true);
   const [modelBadgesVisible, setModelBadgesVisible] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [desktopNotifications, setDesktopNotifications] = useState(false);
+
+  useEffect(() => {
+    setDesktopNotifications(isNotificationsEnabled());
+  }, []);
+
+  const handleToggleNotifications = async (wantsEnabled: boolean) => {
+    if (!isNotificationsSupported()) {
+      toast.error("This browser doesn't support desktop notifications");
+      return;
+    }
+    if (!wantsEnabled) {
+      disableNotifications();
+      setDesktopNotifications(false);
+      return;
+    }
+    const granted = await enableNotifications();
+    setDesktopNotifications(granted);
+    if (!granted) {
+      toast.error('Notifications blocked — allow them in your browser settings to enable this');
+    }
+  };
 
   const handleSave = () => {
     setSaving(true);
@@ -152,6 +180,20 @@ export default function InterfaceSettings() {
               <Toggle checked={opt.value} onChange={opt.onChange} />
             </div>
           ))}
+        </div>
+      </div>
+
+      {/* Desktop notifications */}
+      <div className="border border-border rounded-xl p-5 bg-card mb-6">
+        <h3 className="text-sm font-semibold text-foreground mb-4">Notifications</h3>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-sm font-medium text-foreground">Desktop notifications for reminders</p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Alert you when a scheduled task completes and this tab isn&apos;t focused.
+            </p>
+          </div>
+          <Toggle checked={desktopNotifications} onChange={handleToggleNotifications} />
         </div>
       </div>
 

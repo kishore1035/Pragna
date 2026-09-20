@@ -20,7 +20,7 @@ export default function FolderTree({ activeFolder, onSelect, totalCount }: Folde
   ];
 
   return (
-    <div className="w-56 shrink-0 border-r border-border h-full flex flex-col bg-muted/30">
+    <div className="hidden md:flex md:w-56 shrink-0 border-r border-border h-full flex-col bg-muted/30">
       <div className="flex items-center justify-between px-4 h-14 border-b border-border shrink-0">
         <button
           onClick={() => setExpanded(!expanded)}

@@ -1,32 +1,48 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Check, Save, Loader2, FileText, FileJson, File } from 'lucide-react';
 import { toast } from 'sonner';
+import { loadExportSettings, saveExportSettings } from '@/lib/exportSettings';
 
 const formatOptions = [
-  { id: 'markdown', label: 'Markdown (.md)', icon: FileText, desc: 'Best for readability and re-importing into editors' },
-  { id: 'json', label: 'JSON (.json)', desc: 'Full structured data with metadata, model info, and timestamps', icon: FileJson },
-  { id: 'txt', label: 'Plain Text (.txt)', desc: 'Simple, universal — no formatting', icon: File },
+  { id: 'markdown' as const, label: 'Markdown (.md)', icon: FileText, desc: 'Best for readability and re-importing into editors' },
+  { id: 'json' as const, label: 'JSON (.json)', desc: 'Full structured data with metadata, model info, and timestamps', icon: FileJson },
+  { id: 'txt' as const, label: 'Plain Text (.txt)', desc: 'Simple, universal — no formatting', icon: File },
 ];
 
 export default function ExportSettings() {
-  const [defaultFormat, setDefaultFormat] = useState('markdown');
-  const [filenamePattern, setFilenamePattern] = useState('chatflow-{title}-{date}');
+  const [defaultFormat, setDefaultFormat] = useState<'markdown' | 'json' | 'txt'>('markdown');
+  const [filenamePattern, setFilenamePattern] = useState('pragna-{title}-{date}');
   const [includeMetadata, setIncludeMetadata] = useState(true);
   const [includeTimestamps, setIncludeTimestamps] = useState(true);
   const [includeModelInfo, setIncludeModelInfo] = useState(true);
   const [saving, setSaving] = useState(false);
 
+  useEffect(() => {
+    const stored = loadExportSettings();
+    setDefaultFormat(stored.defaultFormat);
+    setFilenamePattern(stored.filenamePattern);
+    setIncludeMetadata(stored.includeMetadata);
+    setIncludeTimestamps(stored.includeTimestamps);
+    setIncludeModelInfo(stored.includeModelInfo);
+  }, []);
+
   const previewFilename = filenamePattern?.replace('{title}', 'react-server-components')?.replace('{date}', '2026-08-01')?.replace('{model}', 'claude');
 
   const handleSave = () => {
     setSaving(true);
-    // Backend integration point: POST /api/settings/export
+    saveExportSettings({
+      defaultFormat,
+      filenamePattern,
+      includeMetadata,
+      includeTimestamps,
+      includeModelInfo,
+    });
     setTimeout(() => {
       setSaving(false);
       toast?.success('Export settings saved');
-    }, 600);
+    }, 300);
   };
 
   return (

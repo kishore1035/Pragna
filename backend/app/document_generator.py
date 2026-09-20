@@ -308,7 +308,7 @@ def _parse_markdown_outline(text, original_prompt=""):
         if is_heading and heading_text:
             if not title:
                 title = heading_text
-            current = {"heading": heading_text, "bullets": [], "paragraphs": [], "table": []}
+            current = {"heading": heading_text, "blocks": [], "bullets": [], "paragraphs": [], "table": []}
             sections.append(current)
             continue
 
@@ -317,7 +317,7 @@ def _parse_markdown_outline(text, original_prompt=""):
             if not title and len(line) < 80 and not line.startswith(('-', '*', '|')):
                 title = line.strip('*_# ')
                 continue
-            current = {"heading": "Executive Summary", "bullets": [], "paragraphs": [], "table": []}
+            current = {"heading": "Executive Summary", "blocks": [], "bullets": [], "paragraphs": [], "table": []}
             sections.append(current)
 
         # Detect Tables
@@ -327,6 +327,12 @@ def _parse_markdown_outline(text, original_prompt=""):
             cells = [c.strip() for c in line.strip('|').split('|')]
             if any(cells):
                 current["table"].append(cells)
+                # Contiguous table rows collapse into one block so the table
+                # renders as a single unit at the point it appeared.
+                if current["blocks"] and current["blocks"][-1]["type"] == "table":
+                    current["blocks"][-1]["rows"].append(cells)
+                else:
+                    current["blocks"].append({"type": "table", "rows": [cells]})
             continue
 
         # Detect Bullet Points
@@ -334,11 +340,13 @@ def _parse_markdown_outline(text, original_prompt=""):
             clean_bullet = re.sub(r'^(?:[-*+]|\d+[\.\)])\s+', '', line).strip()
             if clean_bullet:
                 current["bullets"].append(clean_bullet)
+                current["blocks"].append({"type": "bullet", "text": clean_bullet})
             continue
 
         # Regular descriptive text line
         if len(line) > 1:
             current["paragraphs"].append(line)
+            current["blocks"].append({"type": "paragraph", "text": line})
 
     # Normalize sections: ensure table or bullets/paragraphs
     valid_sections = []
@@ -359,6 +367,30 @@ def _parse_markdown_outline(text, original_prompt=""):
         return _generate_fallback_structure(original_prompt)
 
     return {"title": title or "Untitled Document", "sections": valid_sections}
+
+
+def _get_ordered_blocks(section):
+    """Return a section's content as one ordered list of typed blocks
+    ({"type": "paragraph"|"bullet", "text": ...} or {"type": "table", "rows": ...}),
+    preserving the order things appeared in the source text.
+
+    Sections built by _parse_markdown_outline already carry this in
+    section["blocks"]. Sections from _generate_fallback_structure (hardcoded
+    canned content that never mixes bullets/paragraphs/a table within one
+    section) don't, so it's synthesized here in the builders' original
+    paragraphs -> table -> bullets order, which is a no-op for those since
+    only one type is ever non-empty per section anyway.
+    """
+    if section.get("blocks"):
+        return section["blocks"]
+    blocks = []
+    for p in section.get("paragraphs") or []:
+        blocks.append({"type": "paragraph", "text": p})
+    if section.get("table"):
+        blocks.append({"type": "table", "rows": section["table"]})
+    for b in section.get("bullets") or []:
+        blocks.append({"type": "bullet", "text": b})
+    return blocks
 
 
 def generate_document_structure(prompt, language="en"):
@@ -453,37 +485,40 @@ def _build_docx(structure, filepath):
             h_p.paragraph_format.space_before = Pt(14)
             h_p.paragraph_format.space_after = Pt(6)
 
-        for p_text in sec.get("paragraphs", []):
-            p = doc.add_paragraph()
-            r = p.add_run(p_text)
-            r.font.name = "Arial"
-            r.font.size = Pt(10.5)
-            r.font.color.rgb = RGBColor(51, 65, 85)
-            p.paragraph_format.space_after = Pt(4)
-            p.paragraph_format.line_spacing = 1.15
+        for block in _get_ordered_blocks(sec):
+            if block["type"] == "paragraph":
+                p = doc.add_paragraph()
+                r = p.add_run(block["text"])
+                r.font.name = "Arial"
+                r.font.size = Pt(10.5)
+                r.font.color.rgb = RGBColor(51, 65, 85)
+                p.paragraph_format.space_after = Pt(4)
+                p.paragraph_format.line_spacing = 1.15
 
-        if sec.get("table") and len(sec["table"]) > 0:
-            rows = sec["table"]
-            num_cols = max(len(r) for r in rows) if rows else 1
-            table = doc.add_table(rows=len(rows), cols=num_cols)
-            table.style = "Table Grid"
+            elif block["type"] == "table":
+                rows = block["rows"]
+                if not rows:
+                    continue
+                num_cols = max(len(r) for r in rows)
+                table = doc.add_table(rows=len(rows), cols=num_cols)
+                table.style = "Table Grid"
 
-            for r_idx, row in enumerate(rows):
-                for c_idx in range(num_cols):
-                    val = str(row[c_idx]) if c_idx < len(row) else ""
-                    table.cell(r_idx, c_idx).text = val
+                for r_idx, row in enumerate(rows):
+                    for c_idx in range(num_cols):
+                        val = str(row[c_idx]) if c_idx < len(row) else ""
+                        table.cell(r_idx, c_idx).text = val
 
-            _style_word_table(table, has_header=True)
-            doc.add_paragraph().paragraph_format.space_after = Pt(6)
+                _style_word_table(table, has_header=True)
+                doc.add_paragraph().paragraph_format.space_after = Pt(6)
 
-        for bullet in sec.get("bullets", []):
-            b_p = doc.add_paragraph(style="List Bullet")
-            b_run = b_p.add_run(bullet)
-            b_run.font.name = "Arial"
-            b_run.font.size = Pt(10.5)
-            b_run.font.color.rgb = RGBColor(51, 65, 85)
-            b_p.paragraph_format.space_after = Pt(3)
-            b_p.paragraph_format.line_spacing = 1.15
+            elif block["type"] == "bullet":
+                b_p = doc.add_paragraph(style="List Bullet")
+                b_run = b_p.add_run(block["text"])
+                b_run.font.name = "Arial"
+                b_run.font.size = Pt(10.5)
+                b_run.font.color.rgb = RGBColor(51, 65, 85)
+                b_p.paragraph_format.space_after = Pt(3)
+                b_p.paragraph_format.line_spacing = 1.15
 
     Path(filepath).parent.mkdir(parents=True, exist_ok=True)
     doc.save(filepath)
@@ -760,43 +795,46 @@ def _build_pdf(structure, filepath):
             story.append(Paragraph(html.escape(heading), h2_style))
             story.append(Spacer(1, 4))
 
-        for p_text in section.get("paragraphs", []):
-            story.append(Paragraph(html.escape(p_text), body_style))
+        for block in _get_ordered_blocks(section):
+            if block["type"] == "paragraph":
+                story.append(Paragraph(html.escape(block["text"]), body_style))
 
-        if section.get("table") and len(section["table"]) > 0:
-            raw_table = section["table"]
-            num_cols = max(len(r) for r in raw_table) if raw_table else 1
-            available_width = 532.0
-            col_width = available_width / max(num_cols, 1)
+            elif block["type"] == "table":
+                raw_table = block["rows"]
+                if not raw_table:
+                    continue
+                num_cols = max(len(r) for r in raw_table)
+                available_width = 532.0
+                col_width = available_width / max(num_cols, 1)
 
-            formatted_table_data = []
-            for r_idx, row in enumerate(raw_table):
-                row_cells = []
-                for c_idx in range(num_cols):
-                    val = str(row[c_idx]) if c_idx < len(row) else ""
-                    st = cell_header_style if r_idx == 0 else cell_style
-                    row_cells.append(Paragraph(html.escape(val), st))
-                formatted_table_data.append(row_cells)
+                formatted_table_data = []
+                for r_idx, row in enumerate(raw_table):
+                    row_cells = []
+                    for c_idx in range(num_cols):
+                        val = str(row[c_idx]) if c_idx < len(row) else ""
+                        st = cell_header_style if r_idx == 0 else cell_style
+                        row_cells.append(Paragraph(html.escape(val), st))
+                    formatted_table_data.append(row_cells)
 
-            pdf_table = PdfTable(formatted_table_data, colWidths=[col_width] * num_cols)
-            pdf_table.setStyle(
-                TableStyle([
-                    ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor('#CBD5E1')),
-                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor('#1E293B')),
-                    ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.HexColor('#FFFFFF'), colors.HexColor('#F8FAFC')]),
-                    ("TOPPADDING", (0, 0), (-1, -1), 6),
-                    ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
-                    ("LEFTPADDING", (0, 0), (-1, -1), 6),
-                    ("RIGHTPADDING", (0, 0), (-1, -1), 6),
-                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                ])
-            )
-            story.append(pdf_table)
-            story.append(Spacer(1, 6))
+                pdf_table = PdfTable(formatted_table_data, colWidths=[col_width] * num_cols)
+                pdf_table.setStyle(
+                    TableStyle([
+                        ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor('#CBD5E1')),
+                        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor('#1E293B')),
+                        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.HexColor('#FFFFFF'), colors.HexColor('#F8FAFC')]),
+                        ("TOPPADDING", (0, 0), (-1, -1), 6),
+                        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+                        ("LEFTPADDING", (0, 0), (-1, -1), 6),
+                        ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+                        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                    ])
+                )
+                story.append(pdf_table)
+                story.append(Spacer(1, 6))
 
-        for bullet in section.get("bullets", []):
-            bullet_escaped = html.escape(bullet)
-            story.append(Paragraph(f"&bull;&nbsp; {bullet_escaped}", bullet_style))
+            elif block["type"] == "bullet":
+                bullet_escaped = html.escape(block["text"])
+                story.append(Paragraph(f"&bull;&nbsp; {bullet_escaped}", bullet_style))
 
         story.append(Spacer(1, 8))
 
@@ -1044,8 +1082,13 @@ def _build_xlsx(structure, filepath, sheets=None):
                 cell.fill = header_fill
 
             for sec in structure.get("sections", []):
-                bullets_text = "\n".join(f"• {b}" for b in sec.get("bullets", []))
-                ws.append([sec.get("heading", ""), bullets_text])
+                heading = sec.get("heading", "")
+                for block in _get_ordered_blocks(sec):
+                    if block["type"] == "table":
+                        for row in block["rows"]:
+                            ws.append([heading, " | ".join(str(c) for c in row)])
+                    else:
+                        ws.append([heading, block["text"]])
 
             for col in ws.columns:
                 max_len = max(len(str(cell.value or '')) for cell in col)
@@ -1203,11 +1246,12 @@ def _build_pptx(structure, filepath, slides=None):
             body = slide.placeholders[1].text_frame
             body.clear()
 
-            lines = sec.get("bullets", [])
-            if not lines and sec.get("paragraphs"):
-                lines = sec["paragraphs"]
-            if not lines and sec.get("table"):
-                lines = [" | ".join(str(c) for c in row) for row in sec["table"]]
+            lines = []
+            for block in _get_ordered_blocks(sec):
+                if block["type"] in ("bullet", "paragraph"):
+                    lines.append(block["text"])
+                elif block["type"] == "table":
+                    lines.extend(" | ".join(str(c) for c in row) for row in block["rows"])
 
             for i, line in enumerate(lines):
                 if i == 0:

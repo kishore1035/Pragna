@@ -12,6 +12,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import Settings, get_settings
+from app.rate_limit import RateLimitMiddleware
 from app.db import init_db, get_connection
 from app.rag import get_chroma_collection, ingest_file
 from app.memory_service import get_memories_chroma_collection
@@ -64,6 +65,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    fastapi_app.add_middleware(RateLimitMiddleware)
 
     @fastapi_app.on_event("startup")
     async def startup():
