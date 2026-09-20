@@ -4,6 +4,7 @@ import * as React from "react";
 import { useRef, useState, useEffect, useCallback } from "react";
 import { cn } from "@/lib/utils";
 import { getModelConfig, SANSKRIT_MODELS } from "@/lib/modelDisplayNames";
+import LanguageSelector from "@/app/components/LanguageSelector";
 
 // ----------------------------------------------------------------------
 // Transition Physics
@@ -386,7 +387,7 @@ function AttachmentGalleryModal({
 export interface PromptInputProps {
   onSubmit?: (
     value: string,
-    meta: { model: string; effort: string; attachments: File[] }
+    meta: { model: string; effort: string; attachments: File[]; language?: string }
   ) => void;
   placeholder?: string;
   className?: string;
@@ -402,6 +403,8 @@ export interface PromptInputProps {
   expandedWidth?: number | string;
   isStreaming?: boolean;
   onStopStreaming?: () => void;
+  selectedLanguage?: string;
+  onLanguageChange?: (langCode: string) => void;
 }
 
 export const PromptInput = React.forwardRef<HTMLDivElement, PromptInputProps>(
@@ -422,6 +425,8 @@ export const PromptInput = React.forwardRef<HTMLDivElement, PromptInputProps>(
       expandedWidth = 720,
       isStreaming = false,
       onStopStreaming,
+      selectedLanguage = "en",
+      onLanguageChange,
     },
     ref
   ) => {
@@ -438,6 +443,18 @@ export const PromptInput = React.forwardRef<HTMLDivElement, PromptInputProps>(
     });
     const [effortIndex, setEffortIndex] = useState(1);
     const [isModelSelectOpen, setIsModelSelectOpen] = useState(false);
+    const [currentLanguage, setCurrentLanguage] = useState(selectedLanguage || "en");
+
+    useEffect(() => {
+      if (selectedLanguage) {
+        setCurrentLanguage(selectedLanguage);
+      }
+    }, [selectedLanguage]);
+
+    const handleSelectLanguage = useCallback((code: string) => {
+      setCurrentLanguage(code);
+      onLanguageChange?.(code);
+    }, [onLanguageChange]);
 
     useEffect(() => {
       if (initialModel) {
@@ -750,7 +767,12 @@ export const PromptInput = React.forwardRef<HTMLDivElement, PromptInputProps>(
     const handleSubmit = () => {
       if (value.trim() === "" && !hasAttachments) return;
       setIsSmoothResize(false);
-      onSubmit?.(value, { model: selectedModel, effort: efforts[effortIndex], attachments: attachments.map((a) => a.file) });
+      onSubmit?.(value, {
+        model: selectedModel,
+        effort: efforts[effortIndex],
+        attachments: attachments.map((a) => a.file),
+        language: currentLanguage,
+      });
       handleValueChange("");
       attachments.forEach((a) => URL.revokeObjectURL(a.url));
       setAttachments([]);
@@ -1086,6 +1108,15 @@ export const PromptInput = React.forwardRef<HTMLDivElement, PromptInputProps>(
                 <DynamicBarsIcon level={efforts[effortIndex]} />
                 <span className="text-xs font-semibold select-none transition-colors"><MorphingText text={efforts[effortIndex]} /></span>
               </button>
+
+              {/* Language Selector Pill */}
+              <LanguageSelector
+                selectedLanguage={currentLanguage}
+                onSelectLanguage={handleSelectLanguage}
+                direction="up"
+                variant="pill"
+                align="left"
+              />
 
               <button
                 type="button" onMouseDown={(e) => e.preventDefault()} onClick={openFileChooser} disabled={attachments.length >= maxAttachments}

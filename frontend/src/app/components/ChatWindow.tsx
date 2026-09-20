@@ -18,7 +18,7 @@ interface ChatWindowProps {
   selectedModel: ModelOption;
   models: ModelOption[];
   onSelectModel: (model: ModelOption) => void;
-  onSendMessage: (content: string, images?: string[]) => void;
+  onSendMessage: (content: string, images?: string[], sources?: Source[], language?: string, modelOverride?: string) => void;
   onStopStreaming: () => void;
   onNewConversation: () => void;
   onToggleSidebar: () => void;
@@ -31,6 +31,8 @@ interface ChatWindowProps {
   sources?: Source[];
   onAttachSource?: (source: Source) => void;
   onRemoveSource?: (sourceId: number) => void;
+  selectedLanguage?: string;
+  onSelectLanguage?: (code: string) => void;
 }
 
 export default function ChatWindow({
@@ -52,6 +54,8 @@ export default function ChatWindow({
   sources = [],
   onAttachSource,
   onRemoveSource,
+  selectedLanguage = 'en',
+  onSelectLanguage = () => {},
 }: ChatWindowProps) {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [showJumpToBottom, setShowJumpToBottom] = useState(false);
@@ -215,6 +219,7 @@ export default function ChatWindow({
           <MessageList
             messages={conversation.messages}
             isStreaming={isStreaming}
+            selectedLanguage={selectedLanguage}
             onOpenArtifact={onOpenArtifact}
           />
         ) : (
@@ -225,6 +230,8 @@ export default function ChatWindow({
             onSelectModel={onSelectModel}
             onStopStreaming={onStopStreaming}
             isStreaming={isStreaming}
+            selectedLanguage={selectedLanguage}
+            onSelectLanguage={onSelectLanguage}
           />
         )}
       </div>
@@ -271,9 +278,17 @@ export default function ChatWindow({
             )}
             <PromptInput
               onSubmit={async (msg, meta) => {
+                let chosenModelId = selectedModel?.id;
                 if (meta?.model && onSelectModel) {
                   const found = models.find(m => m.label === meta.model || m.id === meta.model);
-                  if (found) onSelectModel(found);
+                  if (found) {
+                    chosenModelId = found.id;
+                    onSelectModel(found);
+                  }
+                }
+
+                if (meta?.language && onSelectLanguage) {
+                  onSelectLanguage(meta.language);
                 }
 
                 const allFiles = meta?.attachments || [];
@@ -294,7 +309,7 @@ export default function ChatWindow({
 
                 const images = imageFiles.length > 0 ? await filesToDataUrls(imageFiles) : undefined;
                 const finalMsg = msg.trim() || (docFiles.length > 0 ? `Take a look at ${docFiles.map(f => f.name).join(', ')}.` : msg);
-                onSendMessage(finalMsg, images);
+                onSendMessage(finalMsg, images, undefined, meta?.language, chosenModelId);
               }}
               placeholder="Reply to Pragna..."
               initialModel={selectedModel?.label || "Tvarā"}
@@ -307,6 +322,8 @@ export default function ChatWindow({
               onStopStreaming={onStopStreaming}
               collapsedWidth={440}
               expandedWidth={720}
+              selectedLanguage={selectedLanguage}
+              onLanguageChange={onSelectLanguage}
             />
             <p className="text-center text-[0.6875rem] text-muted-foreground/50 mt-2 tracking-wide">
               Pragna may make mistakes. Verify important information.

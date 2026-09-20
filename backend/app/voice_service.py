@@ -11,20 +11,55 @@ logger = logging.getLogger("mimir.voice")
 DEFAULT_VOICE = "en-US-AriaNeural"
 
 FEATURED_VOICES = [
+    # Indian Languages (Official & Regional)
+    {"id": "hi-IN-SwaraNeural", "name": "Swara (Hindi - हिन्दी)", "gender": "Female", "locale": "hi-IN", "accent": "Indian", "recommended": True},
+    {"id": "hi-IN-MadhurNeural", "name": "Madhur (Hindi - हिन्दी)", "gender": "Male", "locale": "hi-IN", "accent": "Indian"},
+    {"id": "bn-IN-TanishaaNeural", "name": "Tanishaa (Bengali - বাংলা)", "gender": "Female", "locale": "bn-IN", "accent": "Indian", "recommended": True},
+    {"id": "bn-IN-BashkarNeural", "name": "Bashkar (Bengali - বাংলা)", "gender": "Male", "locale": "bn-IN", "accent": "Indian"},
+    {"id": "te-IN-ShrutiNeural", "name": "Shruti (Telugu - తెలుగు)", "gender": "Female", "locale": "te-IN", "accent": "Indian", "recommended": True},
+    {"id": "te-IN-MohanNeural", "name": "Mohan (Telugu - తెలుగు)", "gender": "Male", "locale": "te-IN", "accent": "Indian"},
+    {"id": "ta-IN-PallaviNeural", "name": "Pallavi (Tamil - தமிழ்)", "gender": "Female", "locale": "ta-IN", "accent": "Indian", "recommended": True},
+    {"id": "ta-IN-ValluvarNeural", "name": "Valluvar (Tamil - தமிழ்)", "gender": "Male", "locale": "ta-IN", "accent": "Indian"},
+    {"id": "kn-IN-SapnaNeural", "name": "Sapna (Kannada - ಕನ್ನಡ)", "gender": "Female", "locale": "kn-IN", "accent": "Indian", "recommended": True},
+    {"id": "kn-IN-GaganNeural", "name": "Gagan (Kannada - ಕನ್ನಡ)", "gender": "Male", "locale": "kn-IN", "accent": "Indian"},
+    {"id": "ml-IN-SobhanaNeural", "name": "Sobhana (Malayalam - മലയാളം)", "gender": "Female", "locale": "ml-IN", "accent": "Indian", "recommended": True},
+    {"id": "ml-IN-MidhunNeural", "name": "Midhun (Malayalam - മലയാളം)", "gender": "Male", "locale": "ml-IN", "accent": "Indian"},
+    {"id": "mr-IN-AarohiNeural", "name": "Aarohi (Marathi - मराठी)", "gender": "Female", "locale": "mr-IN", "accent": "Indian", "recommended": True},
+    {"id": "mr-IN-ManoharNeural", "name": "Manohar (Marathi - मराठी)", "gender": "Male", "locale": "mr-IN", "accent": "Indian"},
+    {"id": "gu-IN-DhwaniNeural", "name": "Dhwani (Gujarati - ગુજરાતી)", "gender": "Female", "locale": "gu-IN", "accent": "Indian", "recommended": True},
+    {"id": "gu-IN-NiranjanNeural", "name": "Niranjan (Gujarati - ગુજરાતી)", "gender": "Male", "locale": "gu-IN", "accent": "Indian"},
+    {"id": "ur-IN-GulNeural", "name": "Gul (Urdu - اردو)", "gender": "Female", "locale": "ur-IN", "accent": "Indian", "recommended": True},
+    {"id": "ur-IN-SalmanNeural", "name": "Salman (Urdu - اردو)", "gender": "Male", "locale": "ur-IN", "accent": "Indian"},
+    {"id": "pa-IN-RaaviNeural", "name": "Raavi (Punjabi - ਪੰਜਾਬੀ)", "gender": "Female", "locale": "pa-IN", "accent": "Indian", "recommended": True},
+    {"id": "pa-IN-OjasNeural", "name": "Ojas (Punjabi - ਪੰਜਾਬੀ)", "gender": "Male", "locale": "pa-IN", "accent": "Indian"},
+    {"id": "en-IN-NeerjaNeural", "name": "Neerja (Indian English)", "gender": "Female", "locale": "en-IN", "accent": "Indian", "recommended": True},
+    {"id": "en-IN-PrabhatNeural", "name": "Prabhat (Indian English)", "gender": "Male", "locale": "en-IN", "accent": "Indian"},
+
+    # International
     {"id": "en-US-AriaNeural", "name": "Aria (US)", "gender": "Female", "locale": "en-US", "accent": "American", "recommended": True},
     {"id": "en-US-GuyNeural", "name": "Guy (US)", "gender": "Male", "locale": "en-US", "accent": "American", "recommended": True},
-    {"id": "en-US-JennyNeural", "name": "Jenny (US)", "gender": "Female", "locale": "en-US", "accent": "American"},
-    {"id": "en-US-ChristopherNeural", "name": "Christopher (US)", "gender": "Male", "locale": "en-US", "accent": "American"},
-    {"id": "en-GB-SoniaNeural", "name": "Sonia (UK)", "gender": "Female", "locale": "en-GB", "accent": "British", "recommended": True},
-    {"id": "en-GB-RyanNeural", "name": "Ryan (UK)", "gender": "Male", "locale": "en-GB", "accent": "British"},
-    {"id": "en-IN-NeerjaNeural", "name": "Neerja (India)", "gender": "Female", "locale": "en-IN", "accent": "Indian", "recommended": True},
-    {"id": "en-IN-PrabhatNeural", "name": "Prabhat (India)", "gender": "Male", "locale": "en-IN", "accent": "Indian"},
+    {"id": "en-GB-SoniaNeural", "name": "Sonia (UK)", "gender": "Female", "locale": "en-GB", "accent": "British"},
+    {"id": "ne-NP-HemkalaNeural", "name": "Hemkala (Nepali)", "gender": "Female", "locale": "ne-NP", "accent": "Nepali"},
     {"id": "en-AU-NatashaNeural", "name": "Natasha (Australia)", "gender": "Female", "locale": "en-AU", "accent": "Australian"},
     {"id": "fr-FR-DeniseNeural", "name": "Denise (French)", "gender": "Female", "locale": "fr-FR", "accent": "French"},
     {"id": "de-DE-KatjaNeural", "name": "Katja (German)", "gender": "Female", "locale": "de-DE", "accent": "German"},
     {"id": "es-ES-ElviraNeural", "name": "Elvira (Spanish)", "gender": "Female", "locale": "es-ES", "accent": "Spanish"},
     {"id": "ja-JP-NanamiNeural", "name": "Nanami (Japanese)", "gender": "Female", "locale": "ja-JP", "accent": "Japanese"},
 ]
+
+def get_voice_for_language(lang_code: str | None) -> str:
+    """Resolve best neural TTS voice for an Indian or international language code."""
+    if not lang_code or lang_code == "auto":
+        return DEFAULT_VOICE
+    try:
+        from app.languages import INDIAN_LANGUAGES
+        info = INDIAN_LANGUAGES.get(lang_code)
+        if info and info.get("voice"):
+            return info["voice"]
+    except Exception:
+        pass
+    return DEFAULT_VOICE
+
 
 def clean_text_for_speech(text: str) -> str:
     """Strip markdown code blocks, links, math, and artifacts from spoken text."""
@@ -39,10 +74,23 @@ def clean_text_for_speech(text: str) -> str:
     cleaned = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", cleaned)
     # Remove image links
     cleaned = re.sub(r"!\[.*?\]\(.*?\)", "", cleaned)
-    # Remove excessive formatting symbols (*, _, #, ~)
-    cleaned = re.sub(r"[*_#~>`]", "", cleaned)
     # Clean whitespace
     cleaned = re.sub(r"\s+", " ", cleaned).strip()
+
+    # Transliterate Odia (\u0B00-\u0B7F) to Devanagari phonemes for seamless neural TTS
+    if re.search(r"[\u0B00-\u0B7F]", cleaned):
+        def _replace_odia(match):
+            ch = match.group(0)
+            code = ord(ch)
+            if code == 0x0B71:  # Odia WA -> Devanagari VA
+                return "\u0935"
+            return chr(code - 0x0200)
+        cleaned = re.sub(r"[\u0B00-\u0B7F]", _replace_odia, cleaned)
+
+    # Transliterate Gurmukhi (\u0A00-\u0A7F) to Devanagari phonemes
+    if re.search(r"[\u0A00-\u0A7F]", cleaned):
+        cleaned = re.sub(r"[\u0A00-\u0A7F]", lambda m: chr(ord(m.group(0)) - 0x0100), cleaned)
+
     return cleaned
 
 

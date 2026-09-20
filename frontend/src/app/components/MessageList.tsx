@@ -7,6 +7,7 @@ import MessageBubble from './MessageBubble';
 interface MessageListProps {
   messages: Message[];
   isStreaming: boolean;
+  selectedLanguage?: string;
   onOpenArtifact?: (title: string, content: string, language?: string) => void;
   onRetryLast?: () => void;
 }
@@ -45,7 +46,7 @@ function getDayKey(timestamp: string): string {
   }
 }
 
-export default function MessageList({ messages, isStreaming, onOpenArtifact, onRetryLast }: MessageListProps) {
+export default function MessageList({ messages, isStreaming, selectedLanguage, onOpenArtifact, onRetryLast }: MessageListProps) {
   const handleRetry = useCallback(() => {
     onRetryLast?.();
   }, [onRetryLast]);
@@ -66,6 +67,7 @@ export default function MessageList({ messages, isStreaming, onOpenArtifact, onR
             isStreaming={isStreaming && index === messages.length - 1}
             showDateSeparator={showDateSeparator}
             dateSeparatorLabel={dateSeparatorLabel}
+            selectedLanguage={selectedLanguage}
             onOpenArtifact={onOpenArtifact}
             onRetry={index === messages.length - 1 && message.role === 'assistant' && (
               message.content.includes("Could not connect") ||

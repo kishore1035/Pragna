@@ -51,3 +51,5 @@ data/
 frontend/public/generated_docs/
 .claude/
 frontend/isro_2026_mission_roadmap.md
+*.mp3
+*.wav

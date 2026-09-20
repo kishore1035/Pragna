@@ -1,4 +1,5 @@
 import asyncio
+import re
 import time
 from datetime import datetime, timezone
 from typing import AsyncGenerator
@@ -9,6 +10,7 @@ from app.rag import retrieve
 from app.memory_service import retrieve_memories, extract_and_save_memory
 from app.artifact_service import extract_and_save_artifacts
 from app.tools import OLLAMA_TOOLS_SCHEMA, MUTATING_TOOLS, execute_tool
+from app.languages import MULTILINGUAL_INSTRUCTION, get_language_directive, INDIAN_LANGUAGES
 
 ALLOWED_MODELS = {
     "gemma4:cloud",
@@ -16,6 +18,34 @@ ALLOWED_MODELS = {
     "nemotron-3-super:cloud",
     "minimax-m3:cloud",
 }
+
+BACKEND_MODEL_INFO = {
+    "gemma4:cloud": ("Manas", "मनस्", "Google Gemma 4 31B", "mind/intellect", "Open weights (Free)"),
+    "gemma4:31b-cloud": ("Manas", "मनस्", "Google Gemma 4 31B", "mind/intellect", "Open weights (Free)"),
+    "nemotron-3-super:cloud": ("Bṛhat", "बृहत्", "Nvidia Nemotron 120B", "vast/immense", "High capability (Free)"),
+    "minimax-m3:cloud": ("Tvarā", "त्वरा", "MiniMax M3", "speed", "Instant response"),
+}
+
+def is_model_query(query: str) -> bool:
+    if not query:
+        return False
+    q = query.lower().strip()
+    patterns = [
+        r"what\s+model",
+        r"which\s+model",
+        r"who\s+are\s+you",
+        r"who\s+made\s+you",
+        r"what\s+is\s+your\s+name",
+        r"what('s|\s+is)\s+(the|your|this|current|selected)\s+model",
+        r"what\s+(ai|llm|engine)\s+(are\s+you|is\s+this)",
+        r"मॉडल",
+        r"तुम\s+कौन\s+हो",
+        r"आप\s+कौन\s+हैं",
+        r"మీరు\s+ఎవరు",
+        r"ನೀವು\s+ಯಾರು",
+        r"നീ\s+ആരാണ്",
+    ]
+    return any(re.search(p, q) for p in patterns)
 
 # Per each model's Ollama /api/show capabilities: all four support "tools",
 # but nemotron-3-super:cloud is the one model without "vision" -- it can't
@@ -205,6 +235,8 @@ async def _build_ollama_messages(
     conn, collection, settings, memories_collection, query_text: str, parent_id: int | None,
     document_ids: list[int] | None = None,
     user_id: int | None = None,
+    preferred_language: str | None = None,
+    model: str = "",
 ) -> tuple[list[dict], list[dict]]:
     top_k = 6
     threshold = settings.rag_similarity_threshold
@@ -251,13 +283,53 @@ async def _build_ollama_messages(
         user_id=user_id,
     )
 
-    # System prompt removed per user instruction to let the model respond directly
+    # Resolve active model metadata
+    model_tuple = BACKEND_MODEL_INFO.get(model)
+    if model_tuple:
+        disp_name, script, raw_name, meaning, desc = model_tuple
+    else:
+        disp_name, script, raw_name, meaning, desc = (model or "Default"), "", (model or "Ollama"), "", ""
+
+    model_identity_prompt = (
+        f"[CURRENT ACTIVE MODEL & IDENTITY DIRECTIVE]:\n"
+        f"You are Pragna, India's sovereign AI assistant created by EtherX Innovations within the IgniteX team.\n"
+        f"You are currently operating on the '{disp_name}'" + (f" ({script})" if script else "") + f" model tier, powered by {raw_name}."
+        + (f" ({desc})" if desc else "") + "\n\n"
+        f"IDENTITY INSTRUCTIONS:\n"
+        f"- Whenever asked 'what model are you?', 'which model is this?', 'who are you?', or about your architecture/model:\n"
+        f"  1. Clearly and directly state that you are Pragna, created by EtherX Innovations within the IgniteX team.\n"
+        f"  2. State that you are currently running on the '{disp_name}'" + (f" ({script})" if script else "") + f" model tier, powered by {raw_name}.\n"
+        f"  3. NEVER say generic base defaults like 'I am a large language model, trained by Google' without stating you are Pragna on {disp_name} ({raw_name})."
+    )
+
     history = repository.get_path_to_root(conn, parent_id) if parent_id is not None else []
     ollama_messages = []
     if context_sources:
         context = "\n---\n".join(f"[{s['filename']}]: {s['snippet']}" for s in context_sources)
-        ollama_messages.append({"role": "system", "content": f"Context from uploaded files:\n{context}"})
     ollama_messages += [{"role": m["role"], "content": m["content"]} for m in history]
+
+    # Inject Multilingual directive and System Prompt
+    multilingual_prompt = MULTILINGUAL_INSTRUCTION
+    if preferred_language:
+        multilingual_prompt += get_language_directive(preferred_language)
+
+    system_content = f"{GENERAL_SYSTEM_PROMPT}\n\n{model_identity_prompt}\n\n{multilingual_prompt}"
+    ollama_messages.insert(0, {"role": "system", "content": system_content})
+
+    if is_model_query(query_text):
+        for m in reversed(ollama_messages):
+            if m.get("role") == "user":
+                m["content"] += f"\n\n[MANDATORY SYSTEM DIRECTIVE: The user is specifically asking what model you are or who you are. You MUST state that you are Pragna, currently operating on the selected '{disp_name}'" + (f" ({script})" if script else "") + f" model tier, powered by {raw_name}. Do not output a generic provider answer.]"
+                break
+
+    if preferred_language and preferred_language not in ("en", "auto"):
+        info = INDIAN_LANGUAGES.get(preferred_language)
+        if info:
+            for m in reversed(ollama_messages):
+                if m.get("role") == "user":
+                    m["content"] += f"\n\n[MANDATORY: Reply to this message strictly and entirely in {info['name']} ({info['native']}) using its native script ({info['script']}). Do not reply in English.]"
+                    break
+
     # Return display_sources — only genuine matches — so chips don't appear for every message
     return ollama_messages, display_sources
 
@@ -500,6 +572,7 @@ async def generate_reply(
     memories_collection=None,
     browser_service=None,
     document_ids: list[int] | None = None,
+    preferred_language: str | None = None,
 ) -> AsyncGenerator[dict, None]:
     if model not in ALLOWED_MODELS:
         yield {"type": "error", "message": f"Unknown model: {model}"}
@@ -537,6 +610,8 @@ async def generate_reply(
         conn, collection, settings, memories_collection, query_text, parent_id,
         document_ids=document_ids,
         user_id=user_id,
+        preferred_language=preferred_language,
+        model=model,
     )
 
     # `async for` over a delegate generator doesn't forward athrow/aclose the

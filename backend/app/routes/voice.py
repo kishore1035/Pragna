@@ -15,7 +15,8 @@ router = APIRouter(prefix="/api/voice", tags=["voice"])
 
 class TTSRequest(BaseModel):
     text: str
-    voice: Optional[str] = "en-US-AriaNeural"
+    voice: Optional[str] = None
+    language: Optional[str] = None
     rate: Optional[str] = "+0%"
     pitch: Optional[str] = "+0Hz"
 
@@ -33,7 +34,12 @@ async def text_to_speech(payload: TTSRequest):
     if not text:
         raise HTTPException(status_code=400, detail="Text cannot be empty")
 
-    voice = payload.voice or "en-US-AriaNeural"
+    voice = payload.voice
+    if not voice and payload.language:
+        voice = voice_service.get_voice_for_language(payload.language)
+    if not voice:
+        voice = voice_service.DEFAULT_VOICE
+
     try:
         audio_bytes = await voice_service.synthesize_speech_bytes(
             text=text,
@@ -43,8 +49,18 @@ async def text_to_speech(payload: TTSRequest):
         )
         return Response(content=audio_bytes, media_type="audio/mpeg")
     except Exception as e:
-        logger.error(f"TTS generation failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Speech synthesis error: {str(e)}")
+        logger.warning(f"TTS generation failed for voice '{voice}': {e}. Attempting default fallback voice.")
+        try:
+            audio_bytes = await voice_service.synthesize_speech_bytes(
+                text=text,
+                voice=voice_service.DEFAULT_VOICE,
+                rate=payload.rate or "+0%",
+                pitch=payload.pitch or "+0Hz",
+            )
+            return Response(content=audio_bytes, media_type="audio/mpeg")
+        except Exception as e2:
+            logger.error(f"TTS fallback failed: {e2}")
+            raise HTTPException(status_code=500, detail=f"Speech synthesis error: {str(e)}")
 
 
 @router.post("/stt")

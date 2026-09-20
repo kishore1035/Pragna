@@ -34,6 +34,7 @@ async def _handle_chat_stream(request: Request, body: dict, current_user: dict):
         model = request.app.state.settings.chat_model or "gemma4:cloud"
 
     document_ids = body.get("document_ids")
+    preferred_language = body.get("preferred_language") or body.get("preferredLanguage") or body.get("language")
     state = request.app.state
 
     parent_id = body.get("parent_id") if "parent_id" in body else _UNSET
@@ -50,6 +51,7 @@ async def _handle_chat_stream(request: Request, body: dict, current_user: dict):
                 memories_collection=memories_collection,
                 browser_service=browser_service,
                 document_ids=document_ids,
+                preferred_language=preferred_language,
             ):
                 yield f"data: {json.dumps(event)}\n\n"
         except Exception as e:
