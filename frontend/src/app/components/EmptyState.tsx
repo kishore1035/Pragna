@@ -7,14 +7,17 @@ import { filesToDataUrls } from '../utils/chatUtils';
 import { uploadDocument } from '@/lib/api';
 import PromptInput from '@/components/ui/ai-chat-input';
 import AppLogo from '@/components/ui/AppLogo';
+import { useAuth } from '@/context/AuthContext';
 
 interface EmptyStateProps {
-  onSendMessage: (content: string, images?: string[], sources?: Source[]) => void;
+  onSendMessage: (content: string, images?: string[], sources?: Source[], language?: string, modelOverride?: string) => void;
   selectedModel: ModelOption;
   models: ModelOption[];
   onSelectModel: (model: ModelOption) => void;
   onStopStreaming: () => void;
   isStreaming: boolean;
+  selectedLanguage?: string;
+  onSelectLanguage?: (code: string) => void;
 }
 
 const GREETING_HOUR_RANGES = [
@@ -32,9 +35,13 @@ export default function EmptyState({
   onSelectModel,
   onStopStreaming,
   isStreaming,
+  selectedLanguage = 'en',
+  onSelectLanguage,
 }: EmptyStateProps) {
+  const { user } = useAuth();
   const [greeting, setGreeting] = useState('Hello');
   const [visible, setVisible] = useState(false);
+  const [userName, setUserName] = useState<string>('');
 
   useEffect(() => {
     const hour = new Date().getHours();
@@ -46,6 +53,24 @@ export default function EmptyState({
     const t = setTimeout(() => setVisible(true), 30);
     return () => clearTimeout(t);
   }, []);
+
+  useEffect(() => {
+    if (user?.name) {
+      const first = user.name.trim().split(/\s+/)[0];
+      setUserName(first);
+    } else if (user?.email) {
+      const prefix = user.email.split('@')[0];
+      setUserName(prefix.charAt(0).toUpperCase() + prefix.slice(1));
+    } else {
+      try {
+        const stored = localStorage.getItem('claudechat_user_name');
+        if (stored && stored.trim() && stored.trim().toLowerCase() !== 'vinay') {
+          const first = stored.trim().split(/\s+/)[0];
+          setUserName(first);
+        }
+      } catch {}
+    }
+  }, [user]);
 
   return (
     <div className={`flex flex-col items-center justify-center min-h-full px-4 py-16 transition-all duration-500 ${visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-3'}`}>
@@ -62,7 +87,7 @@ export default function EmptyState({
           </div>
 
           <h1 className="text-2xl sm:text-3xl font-semibold text-foreground tracking-tight leading-tight">
-            {greeting}, <span className="gold-gradient-text">where should we start?</span>
+            {greeting}{userName ? `, ${userName}` : ''}, <span className="gold-gradient-text">where do we start?</span>
           </h1>
         </div>
 
@@ -70,9 +95,17 @@ export default function EmptyState({
         <div className="w-full flex justify-center py-2">
           <PromptInput
             onSubmit={async (msg, meta) => {
+              let chosenModelId = selectedModel?.id;
               if (meta?.model && onSelectModel) {
                 const found = models.find(m => m.label === meta.model || m.id === meta.model);
-                if (found) onSelectModel(found);
+                if (found) {
+                  chosenModelId = found.id;
+                  onSelectModel(found);
+                }
+              }
+
+              if (meta?.language && onSelectLanguage) {
+                onSelectLanguage(meta.language);
               }
 
               const allFiles = meta?.attachments || [];
@@ -92,7 +125,7 @@ export default function EmptyState({
 
               const images = imageFiles.length > 0 ? await filesToDataUrls(imageFiles) : undefined;
               const finalMsg = msg.trim() || (docFiles.length > 0 ? `Take a look at ${docFiles.map(f => f.name).join(', ')}.` : msg);
-              onSendMessage(finalMsg, images, sources.length > 0 ? sources : undefined);
+              onSendMessage(finalMsg, images, sources.length > 0 ? sources : undefined, meta?.language, chosenModelId);
             }}
             placeholder="Ask Pragna anything..."
             initialModel={selectedModel?.label || "Tvarā"}
@@ -105,6 +138,8 @@ export default function EmptyState({
             onStopStreaming={onStopStreaming}
             collapsedWidth={420}
             expandedWidth={720}
+            selectedLanguage={selectedLanguage}
+            onLanguageChange={onSelectLanguage}
           />
         </div>
 
