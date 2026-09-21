@@ -14,8 +14,8 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-  title: 'Pragna — Intelligence & AI Assistant',
-  description: 'Pragna is an AI reasoning assistant with live artifacts, tools, intelligent workflows, and multi-model capabilities.',
+  title: 'PRAGNA 1-A — Intelligence & AI Assistant',
+  description: 'PRAGNA 1-A is an AI reasoning assistant with live artifacts, tools, intelligent workflows, and multi-model capabilities.',
   icons: {
     icon: [
       { url: '/favicon.ico', type: 'image/x-icon' },
