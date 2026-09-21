@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Save, Check, Loader2, Cpu, Key, ShieldCheck, Sparkles, CheckCircle2, Sliders, ExternalLink } from 'lucide-react';
+import { Save, Check, Loader2, Cpu, Key, ShieldCheck, Sparkles, CheckCircle2, Sliders, ExternalLink, Eye, EyeOff } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface ModelTier {
@@ -67,6 +67,7 @@ const MODEL_TIERS: ModelTier[] = [
 export default function ModelsSettings() {
   const [selectedModel, setSelectedModel] = useState('claude-sonnet-4-5');
   const [customApiKey, setCustomApiKey] = useState('');
+  const [showApiKey, setShowApiKey] = useState(false);
   const [keySaved, setKeySaved] = useState(false);
   const [temperature, setTemperature] = useState('0.7');
   const [maxTokens, setMaxTokens] = useState('4000');
@@ -189,13 +190,24 @@ export default function ModelsSettings() {
             <span className="text-[11px] text-muted-foreground font-normal">Optional (defaults to environment key)</span>
           </label>
           <div className="flex gap-2">
-            <input
-              type="password"
-              value={customApiKey}
-              onChange={(e) => setCustomApiKey(e.target.value)}
-              placeholder="sk-or-v1-..."
-              className="flex-1 bg-muted border border-border rounded-lg px-3 py-2 text-xs font-mono text-foreground outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/40"
-            />
+            <div className="relative flex-1 flex items-center">
+              <input
+                type={showApiKey ? 'text' : 'password'}
+                value={customApiKey}
+                onChange={(e) => setCustomApiKey(e.target.value)}
+                placeholder="sk-or-v1-..."
+                className="w-full bg-muted border border-border rounded-lg pl-3 pr-10 py-2 text-xs font-mono text-foreground outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/40"
+              />
+              <button
+                type="button"
+                onClick={() => setShowApiKey((prev) => !prev)}
+                className="absolute right-2.5 p-1 text-gold-500 hover:text-gold-400 dark:text-gold-400 dark:hover:text-gold-300 transition-colors focus:outline-none rounded"
+                aria-label={showApiKey ? 'Hide API key' : 'Show API key'}
+                title={showApiKey ? 'Hide API key' : 'Show API key'}
+              >
+                {showApiKey ? <EyeOff size={14} /> : <Eye size={14} />}
+              </button>
+            </div>
             <button
               onClick={handleSaveApiKey}
               className="px-3 py-2 bg-primary text-primary-foreground text-xs font-medium rounded-lg hover:opacity-90 active:scale-95 transition-all flex items-center gap-1.5 shrink-0"

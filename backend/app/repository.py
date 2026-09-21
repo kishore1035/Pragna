@@ -1,5 +1,11 @@
+import hashlib
+import hmac
 import json
 from datetime import datetime, timezone
+
+
+def hash_secret(value: str, secret: str) -> str:
+    return hmac.new(secret.encode("utf-8"), value.encode("utf-8"), hashlib.sha256).hexdigest()
 
 
 def _now() -> str:
@@ -553,4 +559,101 @@ def get_shared_conversation(conn, token: str) -> dict | None:
         (token,),
     ).fetchone()
     return dict(row) if row else None
+
+
+# ---------------------------------------------------------------------------
+# Email OTP & Password Reset Helpers
+# ---------------------------------------------------------------------------
+
+def create_email_otp(conn, email: str, code_hash: str, expires_at: str) -> int:
+    clean_email = email.strip().lower()
+    # Invalidate previous unconsumed OTPs for this email
+    conn.execute(
+        "UPDATE email_otps SET consumed_at = ? WHERE email = ? AND consumed_at IS NULL",
+        (_now(), clean_email),
+    )
+    cur = conn.execute(
+        "INSERT INTO email_otps (email, code_hash, expires_at, attempts, created_at) VALUES (?, ?, ?, 0, ?)",
+        (clean_email, code_hash, expires_at, _now()),
+    )
+    conn.commit()
+    return cur.lastrowid
+
+
+def get_recent_email_otps_count(conn, email: str, since: str) -> int:
+    clean_email = email.strip().lower()
+    row = conn.execute(
+        "SELECT COUNT(*) as count FROM email_otps WHERE email = ? AND created_at >= ?",
+        (clean_email, since),
+    ).fetchone()
+    return row["count"] if row else 0
+
+
+def get_latest_email_otp(conn, email: str) -> dict | None:
+    clean_email = email.strip().lower()
+    row = conn.execute(
+        "SELECT id, email, code_hash, expires_at, attempts, created_at, consumed_at "
+        "FROM email_otps WHERE email = ? AND consumed_at IS NULL ORDER BY id DESC LIMIT 1",
+        (clean_email,),
+    ).fetchone()
+    return dict(row) if row else None
+
+
+def increment_otp_attempts(conn, otp_id: int) -> int:
+    conn.execute("UPDATE email_otps SET attempts = attempts + 1 WHERE id = ?", (otp_id,))
+    conn.commit()
+    row = conn.execute("SELECT attempts FROM email_otps WHERE id = ?", (otp_id,)).fetchone()
+    return row["attempts"] if row else 0
+
+
+def consume_email_otp(conn, otp_id: int) -> None:
+    conn.execute("UPDATE email_otps SET consumed_at = ? WHERE id = ?", (_now(), otp_id))
+    conn.commit()
+
+
+def delete_email_otp(conn, otp_id: int) -> None:
+    conn.execute("DELETE FROM email_otps WHERE id = ?", (otp_id,))
+    conn.commit()
+
+
+def cleanup_expired_otps(conn) -> None:
+    conn.execute("DELETE FROM email_otps WHERE expires_at < ?", (_now(),))
+    conn.commit()
+
+
+def create_password_reset(conn, user_id: int, token_hash: str, expires_at: str) -> int:
+    # Invalidate previous unused reset tokens for this user
+    conn.execute(
+        "UPDATE password_resets SET used_at = ? WHERE user_id = ? AND used_at IS NULL",
+        (_now(), user_id),
+    )
+    cur = conn.execute(
+        "INSERT INTO password_resets (user_id, token_hash, expires_at, created_at) VALUES (?, ?, ?, ?)",
+        (user_id, token_hash, expires_at, _now()),
+    )
+    conn.commit()
+    return cur.lastrowid
+
+
+def get_password_reset_by_hash(conn, token_hash: str) -> dict | None:
+    row = conn.execute(
+        "SELECT id, user_id, token_hash, expires_at, used_at, created_at "
+        "FROM password_resets WHERE token_hash = ?",
+        (token_hash,),
+    ).fetchone()
+    return dict(row) if row else None
+
+
+def consume_password_reset(conn, reset_id: int, user_id: int) -> None:
+    conn.execute(
+        "UPDATE password_resets SET used_at = ? WHERE user_id = ? AND used_at IS NULL",
+        (_now(), user_id),
+    )
+    conn.commit()
+
+
+def cleanup_expired_password_resets(conn) -> None:
+    conn.execute("DELETE FROM password_resets WHERE expires_at < ?", (_now(),))
+    conn.commit()
+
 
