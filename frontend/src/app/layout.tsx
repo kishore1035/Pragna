@@ -49,8 +49,8 @@ export default function RootLayout({
         </AuthProvider>
         <Toaster
           position="bottom-right"
-          unstyled
           toastOptions={{
+            unstyled: true,
             style: {
               background: 'transparent',
               border: 'none',
