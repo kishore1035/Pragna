@@ -374,6 +374,70 @@ export async function register(email: string, password: string): Promise<AuthRes
   return response.json();
 }
 
+export interface OtpRequestResponse {
+  success: boolean;
+  message: string;
+  expires_in?: number;
+  resend_after?: number;
+}
+
+export async function requestRegistrationOtp(email: string, name?: string): Promise<OtpRequestResponse> {
+  const response = await fetch(`${API_BASE}/api/auth/register/request-otp`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, name }),
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(_authErrorMessage(error.detail, 'Failed to send verification code'));
+  }
+  return response.json();
+}
+
+export async function verifyRegistrationOtp(
+  email: string,
+  code: string,
+  password: string,
+  name?: string
+): Promise<AuthResponse> {
+  const response = await fetch(`${API_BASE}/api/auth/register/verify-otp`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, code, password, name }),
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(_authErrorMessage(error.detail, 'Verification failed'));
+  }
+  return response.json();
+}
+
+export async function forgotPassword(email: string): Promise<{ success: boolean; message: string }> {
+  const response = await fetch(`${API_BASE}/api/auth/forgot-password`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email }),
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(_authErrorMessage(error.detail, 'Failed to request reset link'));
+  }
+  return response.json();
+}
+
+export async function resetPassword(token: string, newPassword: string): Promise<{ success: boolean; message: string }> {
+  const response = await fetch(`${API_BASE}/api/auth/reset-password`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token, new_password: newPassword }),
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(_authErrorMessage(error.detail, 'Failed to reset password'));
+  }
+  return response.json();
+}
+
 export async function login(email: string, password: string): Promise<AuthResponse> {
   const response = await fetch(`${API_BASE}/api/auth/login`, {
     method: 'POST',

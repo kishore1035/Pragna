@@ -8,6 +8,7 @@ from app.config import Settings
 def test_settings(tmp_path):
     return Settings(
         _env_file=None,
+        email_auth_enabled=False,
         db_path=str(tmp_path / "pragna.db"),
         chroma_path=str(tmp_path / "chroma"),
         documents_dir=str(tmp_path / "documents"),
