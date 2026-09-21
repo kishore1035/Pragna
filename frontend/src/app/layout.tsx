@@ -47,7 +47,18 @@ export default function RootLayout({
             </ChatProvider>
           </AuthGate>
         </AuthProvider>
-        <Toaster position="bottom-right" richColors />
+        <Toaster
+          position="bottom-right"
+          toastOptions={{
+            style: {
+              background: 'transparent',
+              border: 'none',
+              boxShadow: 'none',
+              color: '#f0e6d3',
+              padding: '0',
+            },
+          }}
+        />
       </body>
     </html>
   );
