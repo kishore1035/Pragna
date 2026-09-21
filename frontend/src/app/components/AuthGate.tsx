@@ -10,13 +10,24 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
   const pathname = usePathname();
 
-  // Splash plays on initial entry once per browser session (skipped on OAuth callback and reset-password)
-  const [showSplash, setShowSplash] = useState(() => {
-    if (typeof window === 'undefined') return false;
-    if (pathname === '/auth/callback' || pathname === '/reset-password') return false;
-    const hasSeen = sessionStorage.getItem('pragna_seen_splash');
-    return !hasSeen;
-  });
+  // Splash plays on initial entry once per browser session (skipped on OAuth callback and reset-password).
+  // null until mounted: sessionStorage is client-only, so deciding during render would cause a hydration mismatch.
+  const [showSplash, setShowSplash] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    if (pathname === '/auth/callback' || pathname === '/reset-password') {
+      setShowSplash(false);
+      return;
+    }
+    let seen = false;
+    try {
+      seen = !!sessionStorage.getItem('pragna_seen_splash');
+    } catch {
+      // storage unavailable: show splash
+    }
+    setShowSplash(!seen);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [splashVisible, setSplashVisible] = useState(true);
 
   const handleDismiss = useCallback(() => {
@@ -46,6 +57,10 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
   // gating them behind "is there a user yet" would prevent them from ever mounting.
   if (pathname === '/auth/callback' || pathname === '/reset-password') {
     return <>{children}</>;
+  }
+
+  if (showSplash === null) {
+    return null;
   }
 
   if (showSplash) {
