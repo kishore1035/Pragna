@@ -10,21 +10,31 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
   const pathname = usePathname();
 
-  // Splash plays on initial entry (unless landing on OAuth callback or reset-password)
+  // Splash plays on initial entry once per browser session (skipped on OAuth callback and reset-password)
   const [showSplash, setShowSplash] = useState(() => {
-    if (typeof window === 'undefined') return true;
-    return pathname !== '/auth/callback' && pathname !== '/reset-password';
+    if (typeof window === 'undefined') return false;
+    if (pathname === '/auth/callback' || pathname === '/reset-password') return false;
+    const hasSeen = sessionStorage.getItem('pragna_seen_splash');
+    return !hasSeen;
   });
   const [splashVisible, setSplashVisible] = useState(true);
 
   const handleDismiss = useCallback(() => {
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem('pragna_seen_splash', '1');
+    }
     setSplashVisible(false);
     setTimeout(() => setShowSplash(false), SPLASH_FADE_MS);
   }, []);
 
   useEffect(() => {
     if (!showSplash) return;
-    const fadeTimer = setTimeout(() => setSplashVisible(false), SPLASH_TOTAL_MS - SPLASH_FADE_MS);
+    const fadeTimer = setTimeout(() => {
+      setSplashVisible(false);
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem('pragna_seen_splash', '1');
+      }
+    }, SPLASH_TOTAL_MS - SPLASH_FADE_MS);
     const removeTimer = setTimeout(() => setShowSplash(false), SPLASH_TOTAL_MS);
     return () => {
       clearTimeout(fadeTimer);
@@ -43,7 +53,7 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
   }
 
   if (loading) {
-    return <SplashScreen visible={true} />;
+    return null;
   }
 
   if (!user) {

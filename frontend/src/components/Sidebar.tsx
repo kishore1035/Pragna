@@ -19,6 +19,7 @@ import {
   Zap,
   Trash2,
 } from 'lucide-react';
+import UserProfileMenu from '@/components/UserProfileMenu';
 
 const navItems = [
   { key: 'nav-chat', href: '/', icon: MessageSquare, label: 'Chat', showCount: false },
@@ -260,29 +261,20 @@ export default function Sidebar({ onNavigate }: SidebarProps) {
       )}
 
       {/* Footer */}
-      <div
-        className={`px-2 py-3 border-t border-border shrink-0 flex items-center ${
-          collapsed ? 'justify-center' : 'gap-2'
-        }`}
-      >
-        {user?.avatar_url ? (
-          // eslint-disable-next-line @next/next/no-img-element -- external provider-hosted avatar, not worth a next.config remotePatterns entry for one small image
-          <img src={user.avatar_url} alt="" className="w-7 h-7 rounded-full object-cover shrink-0" />
+      <div className="border-t border-border shrink-0 relative">
+        {collapsed ? (
+          <button
+            type="button"
+            onClick={() => setCollapsed(false)}
+            className="w-full py-3 flex items-center justify-center hover:bg-muted/40 transition-colors"
+            title="Expand sidebar & open profile"
+          >
+            <div className="w-7 h-7 rounded-full bg-zinc-800 text-zinc-300 border border-zinc-700/60 flex items-center justify-center text-xs font-semibold">
+              {(user?.name || user?.email || 'v').charAt(0).toLowerCase()}
+            </div>
+          </button>
         ) : (
-          <div className="w-7 h-7 rounded-full bg-gradient-to-br from-primary to-secondary flex items-center justify-center shrink-0">
-            <Zap size={13} className="text-primary-foreground" />
-          </div>
-        )}
-        {!collapsed && (
-          <div className="flex-1 min-w-0">
-            <p className="text-xs font-medium text-foreground truncate">{user?.name || user?.email}</p>
-            <button
-              onClick={handleLogout}
-              className="text-xs text-muted-foreground hover:text-foreground transition-colors"
-            >
-              Log out
-            </button>
-          </div>
+          <UserProfileMenu onOpenSearch={() => {}} />
         )}
       </div>
     </aside>
