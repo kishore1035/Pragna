@@ -20,23 +20,76 @@ export const MODELS: ModelOption[] = SANSKRIT_MODELS.map((m) => ({
   description: m.subtitle,
 }));
 
-const STORAGE_KEY = 'claudechat_conversations';
-const ACTIVE_KEY = 'claudechat_active';
 const THEME_KEY = 'claudechat_theme';
 
-function loadConversations(): Conversation[] {
+function getUserIdentifier(user: { id?: number | string | null; email?: string | null } | null): string | null {
+  if (!user) return null;
+  if (user.id !== undefined && user.id !== null && String(user.id).trim() !== '') {
+    return String(user.id).trim();
+  }
+  if (user.email && String(user.email).trim() !== '') {
+    return String(user.email).trim();
+  }
+  return null;
+}
+
+function getConversationsStorageKey(user: { id?: number | string | null; email?: string | null } | null): string | null {
+  const identifier = getUserIdentifier(user);
+  return identifier ? `claudechat_conversations:${identifier}` : null;
+}
+
+function getActiveStorageKey(user: { id?: number | string | null; email?: string | null } | null): string | null {
+  const identifier = getUserIdentifier(user);
+  return identifier ? `claudechat_active:${identifier}` : null;
+}
+
+function loadConversations(user: { id?: number | string | null; email?: string | null } | null): Conversation[] {
   if (typeof window === 'undefined') return [];
+  const key = getConversationsStorageKey(user);
+  if (!key) return [];
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(key);
     return raw ? JSON.parse(raw) : [];
   } catch {
     return [];
   }
 }
 
-function saveConversations(convs: Conversation[]) {
+function saveConversations(user: { id?: number | string | null; email?: string | null } | null, convs: Conversation[]) {
   if (typeof window === 'undefined') return;
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(convs));
+  const key = getConversationsStorageKey(user);
+  if (!key) return; // Never write while user is null
+  try {
+    localStorage.setItem(key, JSON.stringify(convs));
+  } catch {
+    // Ignore quota or serialization errors
+  }
+}
+
+function loadActiveConversationId(user: { id?: number | string | null; email?: string | null } | null): string | null {
+  if (typeof window === 'undefined') return null;
+  const key = getActiveStorageKey(user);
+  if (!key) return null;
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function saveActiveConversationId(user: { id?: number | string | null; email?: string | null } | null, id: string | null) {
+  if (typeof window === 'undefined') return;
+  const key = getActiveStorageKey(user);
+  if (!key) return; // Never write while user is null
+  try {
+    if (id) {
+      localStorage.setItem(key, id);
+    } else {
+      localStorage.removeItem(key);
+    }
+  } catch {
+    // Ignore error
+  }
 }
 
 function loadTheme(): 'dark' | 'light' {
@@ -52,6 +105,11 @@ function loadTheme(): 'dark' | 'light' {
 
 export default function ChatInterface() {
   const { user } = useAuth();
+  const userRef = React.useRef(user);
+  useEffect(() => {
+    userRef.current = user;
+  }, [user]);
+
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -111,9 +169,27 @@ export default function ChatInterface() {
     }
   }, [user]);
 
-  // Load from localStorage after mount
+  // Load theme and mount on client
   useEffect(() => {
-    const savedConvs = loadConversations();
+    const savedTheme = loadTheme();
+    setTheme(savedTheme);
+    if (window.matchMedia('(max-width: 1023px)').matches) {
+      setSidebarOpen(false);
+    }
+    setMounted(true);
+  }, []);
+
+  // Load user-specific conversations and active ID whenever user changes
+  useEffect(() => {
+    // When user changes or logs out, first reset states to avoid flashing previous account's chats
+    setConversations([]);
+    setActiveConversationId(null);
+    setArtifactOpen(false);
+    setActiveArtifact(null);
+
+    if (!user) return;
+
+    const savedConvs = loadConversations(user);
     // One-time backfill: earlier versions left conversations titled "New conversation"
     // even after real messages were sent into them. Derive a real title wherever we can.
     let backfilled = false;
@@ -124,18 +200,18 @@ export default function ChatInterface() {
       backfilled = true;
       return { ...c, title: getConversationTitle(firstUserMsg.content) };
     });
-    if (backfilled) saveConversations(fixedConvs);
+    if (backfilled) saveConversations(user, fixedConvs);
 
-    const savedActive = localStorage.getItem(ACTIVE_KEY);
-    const savedTheme = loadTheme();
+    const savedActive = loadActiveConversationId(user);
     setConversations(fixedConvs);
-    setActiveConversationId(savedActive);
-    setTheme(savedTheme);
-    if (window.matchMedia('(max-width: 1023px)').matches) {
-      setSidebarOpen(false);
+    if (savedActive && fixedConvs.some(c => c.id === savedActive)) {
+      setActiveConversationId(savedActive);
+    } else if (savedActive && fixedConvs.length > 0) {
+      setActiveConversationId(savedActive);
+    } else {
+      setActiveConversationId(null);
     }
-    setMounted(true);
-  }, []);
+  }, [user?.id, user?.email]);
 
   // Poll scheduled reminders and surface the ones that fired while we weren't
   // watching (toast + a message dropped into whichever conversation is open).
@@ -186,7 +262,7 @@ export default function ChatInterface() {
                 };
                 return { ...c, messages: [...c.messages, reminderMsg], updatedAt: new Date().toISOString() };
               });
-              saveConversations(updated);
+              saveConversations(userRef.current, updated);
               return updated;
             });
           }
@@ -221,7 +297,7 @@ export default function ChatInterface() {
         if (c.sources?.some(s => s.id === source.id)) return c;
         return { ...c, sources: [...(c.sources || []), source] };
       });
-      saveConversations(updated);
+      saveConversations(userRef.current, updated);
       return updated;
     });
   }, []);
@@ -232,7 +308,7 @@ export default function ChatInterface() {
         if (c.id !== activeConversationIdRef.current) return c;
         return { ...c, sources: (c.sources || []).filter(s => s.id !== sourceId) };
       });
-      saveConversations(updated);
+      saveConversations(userRef.current, updated);
       return updated;
     });
   }, []);
@@ -248,27 +324,27 @@ export default function ChatInterface() {
     };
     setConversations(prev => {
       const updated = [newConv, ...prev];
-      saveConversations(updated);
+      saveConversations(userRef.current, updated);
       return updated;
     });
     setActiveConversationId(newConv.id);
-    localStorage.setItem(ACTIVE_KEY, newConv.id);
+    saveActiveConversationId(userRef.current, newConv.id);
   }, [selectedModel.id]);
 
   const selectConversation = useCallback((id: string) => {
     setActiveConversationId(id);
-    localStorage.setItem(ACTIVE_KEY, id);
+    saveActiveConversationId(userRef.current, id);
   }, []);
 
   const deleteConversation = useCallback((id: string) => {
     setConversations(prev => {
       const updated = prev.filter(c => c.id !== id);
-      saveConversations(updated);
+      saveConversations(userRef.current, updated);
       return updated;
     });
     if (activeConversationId === id) {
       setActiveConversationId(null);
-      localStorage.removeItem(ACTIVE_KEY);
+      saveActiveConversationId(userRef.current, null);
     }
   }, [activeConversationId]);
 
@@ -277,7 +353,7 @@ export default function ChatInterface() {
       const updated = prev.map(c =>
         c.id === id ? { ...c, title: newTitle, updatedAt: new Date().toISOString() } : c
       );
-      saveConversations(updated);
+      saveConversations(userRef.current, updated);
       return updated;
     });
   }, []);
@@ -309,11 +385,11 @@ export default function ChatInterface() {
       isNewConv = true;
       setConversations(prev => {
         const updated = [newConv, ...prev];
-        saveConversations(updated);
+        saveConversations(userRef.current, updated);
         return updated;
       });
       setActiveConversationId(convId);
-      localStorage.setItem(ACTIVE_KEY, convId);
+      saveActiveConversationId(userRef.current, convId);
     } else if (newSources?.length) {
       setConversations(prev => {
         const updated = prev.map(c => {
@@ -322,7 +398,7 @@ export default function ChatInterface() {
           const merged = [...existing, ...newSources.filter(s => !existing.some(e => e.id === s.id))];
           return { ...c, sources: merged };
         });
-        saveConversations(updated);
+        saveConversations(userRef.current, updated);
         return updated;
       });
     }
@@ -347,7 +423,7 @@ export default function ChatInterface() {
           updatedAt: new Date().toISOString(),
         };
       });
-      saveConversations(updated);
+      saveConversations(userRef.current, updated);
       return updated;
     });
 
@@ -368,32 +444,15 @@ export default function ChatInterface() {
         if (c.id !== convId) return c;
         return { ...c, messages: [...c.messages, assistantMessage] };
       });
-      saveConversations(updated);
+      saveConversations(userRef.current, updated);
       return updated;
     });
 
-    // BACKEND INTEGRATION: Replace this simulation with:
-    // const response = await fetch('/api/chat', {
-    //   method: 'POST',
-    //   headers: { 'Content-Type': 'application/json' },
-    //   body: JSON.stringify({ messages: [...existingMessages, userMessage], model: selectedModel.id }),
-    // });
-    // const reader = response.body?.getReader();
-    // const decoder = new TextDecoder();
-    // while (true) {
-    //   const { done, value } = await reader.read();
-    //   if (done) break;
-    //   const chunk = decoder.decode(value);
-    //   // parse SSE chunks and append tokens
     let streamedAny = false;
     try {
       const currentConv = conversations.find(c => c.id === convId);
       const history = (currentConv?.messages || []).map(m => ({ role: m.role, content: m.content, images: m.images }));
       history.push({ role: 'user', content, images });
-      // currentConv reflects state as of the last render — for a brand-new
-      // conversation created earlier in this same call, its sources won't be
-      // visible there yet, so fold in newSources directly rather than relying
-      // solely on the (stale) conversations lookup.
       const effectiveSources = [
         ...(currentConv?.sources || []),
         ...((newSources || []).filter(s => !(currentConv?.sources || []).some(e => e.id === s.id))),
@@ -455,12 +514,8 @@ export default function ChatInterface() {
           sourceDocumentIds: effectiveSources.length ? effectiveSources.map(s => s.id) : undefined,
           preferredLanguage: effectiveLang !== 'auto' ? effectiveLang : undefined,
         }),
-        // Server-side retries/fallbacks can legitimately take a while; this is a
-        // last-resort ceiling so a fully stuck request still surfaces an error
-        // instead of leaving the UI stuck on "thinking" forever.
         signal: AbortSignal.timeout(90000),
       });
-
 
       if (response.ok && response.body) {
         const reader = response.body.getReader();
@@ -550,7 +605,7 @@ export default function ChatInterface() {
             ),
           };
         });
-        saveConversations(updated);
+        saveConversations(userRef.current, updated);
         return updated;
       });
     }
@@ -567,12 +622,12 @@ export default function ChatInterface() {
           updatedAt: new Date().toISOString(),
         };
       });
-      saveConversations(updated);
+      saveConversations(userRef.current, updated);
       return updated;
     });
 
     setIsStreaming(false);
-  }, [activeConversationId, isStreaming, selectedModel.id, conversations, selectedLanguage]);
+  }, [activeConversationId, isStreaming, selectedModel.id, conversations, selectedLanguage, user]);
 
   const stopStreaming = useCallback(() => {
     setIsStreaming(false);
@@ -582,7 +637,7 @@ export default function ChatInterface() {
         ...c,
         messages: c.messages.map(m => ({ ...m, isStreaming: false })),
       }));
-      saveConversations(updated);
+      saveConversations(userRef.current, updated);
       return updated;
     });
   }, []);
